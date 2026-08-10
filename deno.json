@@ -1,0 +1,53 @@
+{
+	"name": "@databrill/core-pg-kysely",
+	"version": "0.1.0",
+	"license": "MIT",
+	"exports": {
+		".": "./src/mod.ts",
+		"./types": "./src/types.ts"
+	},
+	"imports": {
+		"kysely": "npm:kysely@^0.29.0",
+		"kysely/": "npm:/kysely@^0.29.0/",
+		"pg": "npm:pg@^8.16.0",
+		"@types/pg": "npm:@types/pg@^8.15.0"
+	},
+	"publish": {
+		"exclude": [
+			"tests/",
+			".gitignore",
+			"deno.lock"
+		]
+	},
+	"tasks": {
+		"fmt": "deno fmt",
+		"fmt:check": "deno fmt --check",
+		"lint": "deno lint",
+		"check": "deno check",
+		"static": "deno --quiet fmt && deno task check && deno task lint",
+		"static:ci": "deno --quiet task fmt:check && deno task check && deno task lint",
+		"ci": "deno task static:ci && deno task test:unit",
+		"publish:dry": "deno publish --dry-run --allow-dirty",
+		"test:unit": "deno test --allow-read=. tests/unit"
+	},
+	"fmt": {
+		"useTabs": true,
+		"lineWidth": 120,
+		"indentWidth": 4,
+		"semiColons": true,
+		"singleQuote": false,
+		"proseWrap": "preserve",
+		"exclude": [
+			"**/*.md",
+			".claude",
+			"openspec"
+		]
+	},
+	"lint": {
+		"rules": {
+			"tags": [
+				"recommended"
+			]
+		}
+	}
+}
