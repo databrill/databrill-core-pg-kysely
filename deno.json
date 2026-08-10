@@ -38,9 +38,7 @@
 		"singleQuote": false,
 		"proseWrap": "preserve",
 		"exclude": [
-			"**/*.md",
-			".claude",
-			"openspec"
+			"**/*.md"
 		]
 	},
 	"lint": {
