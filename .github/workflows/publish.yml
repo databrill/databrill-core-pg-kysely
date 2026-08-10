@@ -1,0 +1,73 @@
+# Publishes @databrill/core-pg-kysely to JSR.
+#
+# AUTHENTICATION: none stored. JSR accepts GitHub Actions' OIDC token, so this
+# workflow needs `id-token: write` and nothing else — no npm token, no JSR
+# token, no secret in either repository. For that to work, the package must
+# exist on jsr.io under the @databrill scope AND have this repository set as its
+# linked GitHub repository in the package settings. Until both are true,
+# `deno publish` here fails with an authorization error; that is the intended
+# human gate, not a bug in this file.
+#
+# TRIGGER: pushing a `v<version>` tag publishes for real. The tag is the release
+# decision, and it is a human action by design — nothing publishes on a merge to
+# main. Manual runs (workflow_dispatch) are always dry runs, so the button can
+# never become an accidental release.
+#
+# NOTE: publishing makes the source public on jsr.io regardless of this
+# repository's visibility. Do not tag a release while the mirror is still
+# private unless that is a deliberate choice.
+
+name: Publish
+
+on:
+    push:
+        tags: ["v*"]
+    workflow_dispatch:
+
+concurrency:
+    group: publish-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        permissions:
+            contents: read
+            id-token: write # required for JSR's tokenless OIDC publish
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: denoland/setup-deno@v2
+              with:
+                  # Keep in step with ci.yml; see the note there.
+                  deno-version: "2.9.4"
+
+            # A tag that disagrees with deno.json is the classic release mistake: JSR
+            # publishes the manifest version, so `v0.2.0` over a manifest still saying
+            # 0.1.0 either republishes an existing version or ships one nobody asked
+            # for. Refuse before anything is uploaded.
+            - name: Verify the tag matches deno.json
+              if: startsWith(github.ref, 'refs/tags/')
+              run: |
+                  # `deno eval` runs with implicit full permissions and REJECTS
+                  # --allow-read, so no permission flag belongs here.
+                  manifest="$(deno eval 'console.log(JSON.parse(await Deno.readTextFile("deno.json")).version)')"
+                  tag="${GITHUB_REF_NAME#v}"
+                  echo "tag: $tag   deno.json: $manifest"
+                  if [[ "$tag" != "$manifest" ]]; then
+                    echo "::error::tag $GITHUB_REF_NAME does not match deno.json version $manifest"
+                    exit 1
+                  fi
+
+            # The same gate CI runs, re-run here: this job can be triggered on a tag
+            # pointing at any commit, including one CI never saw.
+            - run: deno task ci
+
+            - name: Publish (dry run)
+              if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+              run: deno publish --dry-run
+
+            - name: Publish
+              if: startsWith(github.ref, 'refs/tags/')
+              run: deno publish
