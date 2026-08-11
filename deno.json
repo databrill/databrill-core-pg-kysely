@@ -1,7 +1,7 @@
 {
 	"name": "@databrill/core-pg-kysely",
 	"version": "0.1.1",
-	"license": "MIT",
+	"license": "Apache-2.0",
 	"exports": {
 		".": "./src/mod.ts",
 		"./types": "./src/types.ts"
