@@ -232,6 +232,21 @@ database — the rollout order is expand, migrate the fleet, publish types,
 then contract. A published version never describes a schema that does
 not exist yet somewhere.
 
+### The package version is not the schema version
+
+`SCHEMA_VERSION`, exported from this package, is the schema contract.
+The package version in `deno.json` is the released library, which also
+changes for reasons your database cannot observe: a documentation fix, a
+runtime bug fix, a new export. Those releases move the package's patch
+number while `SCHEMA_VERSION` stays put.
+
+The two always agree in their leading two components, so package `0.2.x`
+is always the `0.2.x` contract and a breaking schema change is always
+visible in the version you install. Only the patch slot floats. When you
+need to know exactly which contract a build carries, read
+`SCHEMA_VERSION` rather than the package version — and
+`checkSchemaCompatibility()` already does.
+
 ## No migrations
 
 This package ships no migrations, and your database role is not expected

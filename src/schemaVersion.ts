@@ -14,6 +14,10 @@
  * Compared against the version recorded in the connected database by
  * `checkSchemaCompatibility()`. Canonically defined in
  * `services/libs/database/src/tenantSchemaVersion.ts`.
+ *
+ * This is NOT the package version, though the two share their leading two
+ * components. The package also ships fixes no database can observe, so its
+ * patch slot runs ahead; this constant only moves when the schema does.
  */
 export const SCHEMA_VERSION: string = "0.1.0";
 
