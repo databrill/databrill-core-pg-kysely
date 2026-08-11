@@ -12,8 +12,17 @@ against a schema you cannot see.
 ## Install
 
 ```
-deno add jsr:@databrill/core-pg-kysely
+deno add jsr:@databrill/core-pg-kysely@^0.1.0
 ```
+
+The version constraint is required, not optional style. This package is still
+`0.x`, and `deno add` without a constraint refuses a package whose only
+releases are below `1.0.0` — it reports "has only pre-release versions
+available" and does nothing.
+
+If you install within a day of a release, Deno's minimum-dependency-age policy
+(24 hours by default) will refuse the new version as well. Either wait, or pass
+`--min-dep-age=0` for that one install.
 
 Node consumers can install through JSR's npm compatibility layer. Add an
 `.npmrc` with `@jsr:registry=https://npm.jsr.io` and install
