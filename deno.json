@@ -1,10 +1,23 @@
 {
 	"name": "@databrill/core-pg-kysely",
-	"version": "0.1.1",
+	"version": "0.1.2",
+	"description": "Typed access to a Databrill tenant database: the tenant schema as a versioned Kysely DB interface, plus a connection factory whose driver configuration makes those types true at runtime.",
 	"license": "Apache-2.0",
+	"tasks": {
+		"check": "deno check",
+		"ci": "deno task static:ci && deno task test:unit",
+		"fmt:check": "deno fmt --check",
+		"fmt": "deno fmt",
+		"lint": "deno lint",
+		"publish:dry": "deno publish --dry-run --allow-dirty",
+		"static:ci": "deno --quiet task fmt:check && deno task check && deno task lint",
+		"static": "deno --quiet fmt && deno task check && deno task lint",
+		"test:unit": "deno test --allow-read=. tests/unit"
+	},
 	"exports": {
 		".": "./src/mod.ts",
-		"./types": "./src/types.ts"
+		"./types": "./src/types.ts",
+		"./contract": "./src/contract.ts"
 	},
 	"imports": {
 		"kysely": "npm:kysely@^0.29.0",
@@ -14,32 +27,21 @@
 	},
 	"publish": {
 		"exclude": [
-			"tests/",
 			".gitignore",
-			"deno.lock"
+			"deno.lock",
+			"tests/"
 		]
-	},
-	"tasks": {
-		"fmt": "deno fmt",
-		"fmt:check": "deno fmt --check",
-		"lint": "deno lint",
-		"check": "deno check",
-		"static": "deno --quiet fmt && deno task check && deno task lint",
-		"static:ci": "deno --quiet task fmt:check && deno task check && deno task lint",
-		"ci": "deno task static:ci && deno task test:unit",
-		"publish:dry": "deno publish --dry-run --allow-dirty",
-		"test:unit": "deno test --allow-read=. tests/unit"
 	},
 	"fmt": {
-		"useTabs": true,
-		"lineWidth": 120,
-		"indentWidth": 4,
-		"semiColons": true,
-		"singleQuote": false,
-		"proseWrap": "preserve",
 		"exclude": [
 			"**/*.md"
-		]
+		],
+		"indentWidth": 4,
+		"lineWidth": 120,
+		"proseWrap": "preserve",
+		"semiColons": true,
+		"singleQuote": false,
+		"useTabs": true
 	},
 	"lint": {
 		"rules": {

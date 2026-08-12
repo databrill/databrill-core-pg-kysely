@@ -15,32 +15,77 @@
 import type { ColumnType } from "kysely";
 import type { InstantColumn, PlainDateColumn } from "./temporalColumns.ts";
 
+/**
+ * A Postgres array column: an array of whatever the element type resolves to
+ * on each of the select, insert and update sides.
+ */
 export type ArrayType<T> = ArrayTypeImpl<T> extends (infer U)[] ? U[]
 	: ArrayTypeImpl<T>;
 
+/**
+ * The `ColumnType`-aware half of {@link ArrayType}, split out so the alias can
+ * flatten an already-array result rather than nesting it.
+ */
 export type ArrayTypeImpl<T> = T extends ColumnType<infer S, infer I, infer U> ? ColumnType<S[], I[], U[]>
 	: T[];
 
+/**
+ * A column the database fills in when it is omitted: required when selected,
+ * optional when inserted.
+ */
 export type Generated<T> = T extends ColumnType<infer S, infer I, infer U> ? ColumnType<S, I | undefined, U>
 	: ColumnType<T, T | undefined, T>;
 
+/**
+ * A `bigint` column. Selected as `string` so values beyond
+ * `Number.MAX_SAFE_INTEGER` survive the round trip; accepts `bigint`, `number`
+ * or `string` when written.
+ */
 export type Int8 = ColumnType<string, bigint | number | string, bigint | number | string>;
 
+/**
+ * A `json` or `jsonb` column.
+ */
 export type Json = JsonValue;
 
+/**
+ * A JSON array, as it appears inside a `json` or `jsonb` column.
+ */
 export type JsonArray = JsonValue[];
 
+/**
+ * A JSON object, as it appears inside a `json` or `jsonb` column.
+ */
 export type JsonObject = {
 	[x: string]: JsonValue | undefined;
 };
 
+/**
+ * A JSON scalar: string, number, boolean, or null.
+ */
 export type JsonPrimitive = boolean | number | string | null;
 
+/**
+ * Any JSON value — the recursive union a `json` or `jsonb` column can hold.
+ */
 export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
 
+/**
+ * A `numeric` column. Selected as `string` so an exact decimal is not rounded
+ * through an IEEE double; accepts `number` or `string` when written.
+ */
 export type Numeric = ColumnType<string, number | string, number | string>;
 
-export interface AmazonAdsAd {
+/**
+ * Merged live view of Amazon advertising ads: the periodic Export table
+ * (amzadapi_exports_v1__ad) reconciled with the near-realtime Amazon Marketing
+ * Stream snapshot (amzms_v1__ads), on the same merge semantics as
+ * amazon_ads_campaign. `name`, `creative` and `ad_type` are Export-only:
+ * sponsored-product stream ads carry none of them.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbView_amazon_ads_ad {
 	ad_group_id: string | null;
 	ad_id: string | null;
 	ad_product: string | null;
@@ -82,7 +127,15 @@ export interface AmazonAdsAd {
 	stream_version: number | null;
 }
 
-export interface AmazonAdsAdgroup {
+/**
+ * Merged live view of Amazon advertising ad groups: the periodic Export table
+ * (amzadapi_exports_v1__adgroup) reconciled with the near-realtime Amazon
+ * Marketing Stream snapshot (amzms_v1__adgroups), on the same merge semantics
+ * as amazon_ads_campaign.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbView_amazon_ads_adgroup {
 	ad_group_id: string | null;
 	ad_product: string | null;
 	bid: Json | null;
@@ -120,7 +173,17 @@ export interface AmazonAdsAdgroup {
 	stream_version: number | null;
 }
 
-export interface AmazonAdsCampaign {
+/**
+ * Merged live view of Amazon advertising campaigns: the periodic Export table
+ * (amzadapi_exports_v1__campaign) reconciled with the near-realtime Amazon
+ * Marketing Stream snapshot (amzms_v1__campaigns). `state` and `name` come
+ * from whichever side is fresher, so a console change shows within seconds of
+ * being made instead of waiting for the next Export. Delivery and serving
+ * fields are Export-only.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbView_amazon_ads_campaign {
 	ad_product: string | null;
 	brand_entity_id: string | null;
 	/**
@@ -167,7 +230,17 @@ export interface AmazonAdsCampaign {
 	targeting_settings: string | null;
 }
 
-export interface AmazonAdsTarget {
+/**
+ * Merged live view of Amazon advertising targets: the periodic Export table
+ * (amzadapi_exports_v1__target) reconciled with the near-realtime Amazon
+ * Marketing Stream snapshot (amzms_v1__targets), on the same merge semantics
+ * as amazon_ads_campaign. `target_details`, `target_level` and `bid` are
+ * Export-only; the stream nests its targeting expression inside the row's
+ * `doc` instead.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbView_amazon_ads_target {
 	ad_group_id: string | null;
 	ad_product: string | null;
 	/**
@@ -213,7 +286,14 @@ export interface AmazonAdsTarget {
 	target_type: string | null;
 }
 
-export interface AmazonBrowseNode {
+/**
+ * Amazon browse-node (category) tree, one row per (marketplace_code, id),
+ * carrying the node's name, parent, materialized ancestor path and whether it
+ * has children.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amazon_browse_node {
 	created_at: InstantColumn;
 	deleted_at: InstantColumn | null;
 	has_children: boolean;
@@ -226,7 +306,13 @@ export interface AmazonBrowseNode {
 	updated_at: InstantColumn;
 }
 
-export interface AmazonBrowseNodeAttribute {
+/**
+ * Attributes of an Amazon browse node: one row per (marketplace_code, node_id,
+ * name) holding that attribute's value.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amazon_browse_node_attribute {
 	created_at: InstantColumn;
 	deleted_at: InstantColumn | null;
 	marketplace_code: string;
@@ -236,7 +322,13 @@ export interface AmazonBrowseNodeAttribute {
 	value: string;
 }
 
-export interface AmazonCountry {
+/**
+ * Reference table of the countries Amazon operates in: one row per ISO 3166-1
+ * alpha-2 country code, with its display name, region and time zone.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amazon_country {
 	country_code: string;
 	country_name: string;
 	created_at: InstantColumn;
@@ -245,7 +337,7 @@ export interface AmazonCountry {
 	updated_at: InstantColumn;
 }
 
-export interface AmazonFbaInventorySummary {
+export interface DbView_amazon_fba_inventory_summary {
 	asin: string | null;
 	carrier_damaged: number | null;
 	condition: string | null;
@@ -273,7 +365,16 @@ export interface AmazonFbaInventorySummary {
 	warehouse_damaged: number | null;
 }
 
-export interface AmazonListingAll {
+/**
+ * Flattened view of all merchant listings — active, inactive and incomplete —
+ * with full product metadata, from the GET_MERCHANT_LISTINGS_ALL_DATA report
+ * (amzreport_MERCHANT_LISTINGS_ALL). Condition codes are decoded, fulfillment
+ * channel is derived as FBA or FBM, open_date is parsed to timestamptz, and
+ * country code is joined from amazon_marketplace.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbView_amazon_listing_all {
 	/**
 	 * Amazon Standard Identification Number
 	 */
@@ -325,7 +426,16 @@ export interface AmazonListingAll {
 	status: string | null;
 }
 
-export interface AmazonListingOpen {
+/**
+ * Flattened view of currently open listings with consumer and B2B pricing,
+ * from the GET_FLAT_FILE_OPEN_LISTINGS_DATA report (amzreport_OPEN_LISTINGS).
+ * Carries the consumer price, the B2B base price, up to five B2B
+ * quantity-based pricing tiers, and country code joined from
+ * amazon_marketplace.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbView_amazon_listing_open {
 	asin: string | null;
 	/**
 	 * B2B base price (may be NULL)
@@ -368,7 +478,14 @@ export interface AmazonListingOpen {
 	seller_sku: string | null;
 }
 
-export interface AmazonMarketplace {
+/**
+ * Reference table of Amazon marketplaces: one row per marketplace id, with its
+ * short code, display name, country, default currency and language, storefront
+ * domain and time zone.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amazon_marketplace {
 	country_code: string;
 	created_at: InstantColumn;
 	currency: string;
@@ -381,7 +498,13 @@ export interface AmazonMarketplace {
 	updated_at: InstantColumn;
 }
 
-export interface AmazonMerchant {
+/**
+ * One row per Amazon seller account (merchant) known to this workspace, with
+ * its display name and whether it is currently active.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amazon_merchant {
 	createdAt: InstantColumn;
 	isActive: boolean;
 	merchantId: string;
@@ -389,7 +512,7 @@ export interface AmazonMerchant {
 	updatedAt: InstantColumn;
 }
 
-export interface AmazonOrdersByDayAndSku {
+export interface DbView_amazon_orders_by_day_and_sku {
 	asin: string | null;
 	avg_line_price: Numeric | null;
 	currency: string | null;
@@ -412,7 +535,14 @@ export interface AmazonOrdersByDayAndSku {
 	total_tax: Numeric | null;
 }
 
-export interface AmazonSalesAndTraffic {
+/**
+ * Flattened view of sales and traffic by SKU and date: the
+ * amzreport_SALES_AND_TRAFFIC__skuByDay report with every sales and traffic
+ * metric extracted into its own column rather than left nested.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbView_amazon_sales_and_traffic {
 	browser_page_views: Numeric | null;
 	browser_page_views_b2b: Numeric | null;
 	browser_page_views_percentage: Numeric | null;
@@ -451,7 +581,15 @@ export interface AmazonSalesAndTraffic {
 	updated_at: InstantColumn | null;
 }
 
-export interface AmazonStore {
+/**
+ * One row per (merchant, marketplace) storefront the seller sells on, with its
+ * marketplace code, country and display name. isReal is false for the
+ * synthetic entries Amazon returns alongside genuine storefronts, such as the
+ * Non-Amazon set and the invoicing shadow marketplace.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amazon_store {
 	countryCode: string;
 	createdAt: InstantColumn;
 	isActive: boolean;
@@ -463,7 +601,13 @@ export interface AmazonStore {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzadapiEligibilityV1Program {
+/**
+ * Amazon Ads program eligibility per (merchant, marketplace, program), with
+ * the eligibility flag and any reasons Amazon gave for ineligibility.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzadapi_eligibility_v1__program {
 	/**
 	 * When this eligibility record was first created
 	 */
@@ -498,7 +642,14 @@ export interface AmzadapiEligibilityV1Program {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzadapiExportsV1Ad {
+/**
+ * One advertising ad per (merchant, marketplace, ad id) from the Amazon Ads
+ * API exports endpoint, with its ad group, campaign, ad product, state,
+ * delivery status and creative.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzadapi_exports_v1__ad {
 	/**
 	 * Amazon advertising ad group ID
 	 */
@@ -561,7 +712,14 @@ export interface AmzadapiExportsV1Ad {
 	state: string;
 }
 
-export interface AmzadapiExportsV1Adgroup {
+/**
+ * One advertising ad group per (merchant, marketplace, ad group id) from the
+ * Amazon Ads API exports endpoint, with its campaign, ad product, state,
+ * delivery status, bid and optimization settings.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzadapi_exports_v1__adgroup {
 	/**
 	 * Amazon advertising ad group ID
 	 */
@@ -620,7 +778,14 @@ export interface AmzadapiExportsV1Adgroup {
 	state: string;
 }
 
-export interface AmzadapiExportsV1Campaign {
+/**
+ * One advertising campaign per (merchant, marketplace, campaign id) from the
+ * Amazon Ads API exports endpoint, with its ad product, state, flight dates,
+ * budget caps, targeting settings and delivery status.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzadapi_exports_v1__campaign {
 	/**
 	 * Ad product type: SPONSORED_DISPLAY, SPONSORED_BRANDS, SPONSORED_PRODUCTS
 	 */
@@ -703,7 +868,14 @@ export interface AmzadapiExportsV1Campaign {
 	targetingSettings: string | null;
 }
 
-export interface AmzadapiExportsV1Target {
+/**
+ * One advertising target per (merchant, marketplace, target id) from the
+ * Amazon Ads API exports endpoint, with its campaign and ad group, target type
+ * and expression, bid, negative flag and delivery status.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzadapi_exports_v1__target {
 	/**
 	 * Amazon advertising ad group ID
 	 */
@@ -770,7 +942,15 @@ export interface AmzadapiExportsV1Target {
 	targetType: string;
 }
 
-export interface AmzadapiReportsV1Product01ByDay {
+/**
+ * Daily Amazon Ads product-attribution report: one row per day, ad entity and
+ * converted-product dimension, showing which advertised products led to
+ * purchases of which converted products. Promoted metrics count the advertised
+ * product itself; halo metrics count other products bought after the ad.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzadapi_reports_v1__product01__byDay {
 	addToCart: number;
 	addToCartFromClicks: number;
 	addToCartFromViews: number;
@@ -834,7 +1014,14 @@ export interface AmzadapiReportsV1Product01ByDay {
 	unitsSoldPromoted: number;
 }
 
-export interface AmzadapiReportsV1SearchAsinPlacementByDay {
+/**
+ * Daily Amazon Ads search-term and placement report: one row per day, ad
+ * entity, target, search term and placement, with impressions, clicks, cost,
+ * purchases, units sold and sales.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzadapi_reports_v1__search_asin_placement__byDay {
 	addToCart: number;
 	addToCartFromClicks: number;
 	addToCartFromViews: number;
@@ -909,7 +1096,16 @@ export interface AmzadapiReportsV1SearchAsinPlacementByDay {
 	viewableImpressions: number;
 }
 
-export interface AmzaggProfitOrderItem {
+/**
+ * Materialized P&L order-item atom: one row per (merchantId, marketplaceId,
+ * kind, orderId, sku, sourceKey). A product total is a fold of these rows.
+ * Money is signed as it contributes to profit; gross profit, net profit,
+ * margin, ROI and unit price are derived at read time and deliberately not
+ * stored.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzagg_profit__orderItem {
 	/**
 	 * Amazon order-item fees, negative. Settled from SETTLEMENT_V2 when a settlement has posted, otherwise forecast from the FBA fee preview; feesEstimated says which.
 	 */
@@ -1032,7 +1228,14 @@ export interface AmzaggProfitOrderItem {
 	units: number;
 }
 
-export interface AmzaggProfitOrderItemProjectionState {
+/**
+ * Completeness state of the amzagg_profit__orderItem projection, one row per
+ * merchant. READY-gating on this row, including the covered date window, is
+ * what makes a delete-and-replace rebuild safe to serve.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzagg_profit__orderItemProjectionState {
 	/**
 	 * Completion time of the last successful rebuild; null until one succeeds
 	 */
@@ -1073,7 +1276,15 @@ export interface AmzaggProfitOrderItemProjectionState {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzfactLedgerBuild {
+/**
+ * What one ledger write covered and what it could not place, one row per
+ * (merchantId, dateFirst, dateLast). Not a gating table: no status, no READY
+ * check. It records the three things a run encountered that produced no
+ * transaction and no posting.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzfact_ledger_build {
 	/**
 	 * Orders the SKU join refused to resolve. The money is booked in full; only the SKU dimension is withheld.
 	 */
@@ -1114,7 +1325,15 @@ export interface AmzfactLedgerBuild {
 	writtenAt: InstantColumn;
 }
 
-export interface AmzfactLedgerItem {
+/**
+ * A ledger transaction's per-SKU dimension: SKU, ASIN and units, one row per
+ * (transactionId, sku). Carries no money and is not derivable from the
+ * postings — units appear on no posting, and a free replacement's SKU appears
+ * in no posting at all.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzfact_ledger_item {
 	/**
 	 * ASIN as the source reported it, or null when unknown
 	 */
@@ -1133,7 +1352,14 @@ export interface AmzfactLedgerItem {
 	units: number;
 }
 
-export interface AmzfactLedgerPosting {
+/**
+ * One posting of a ledger transaction: a signed amount against an account. The
+ * postings of one transactionId sum to zero. Keyed on (transactionId, ordinal)
+ * because a multi-unit line produces postings identical in every other column.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzfact_ledger_posting {
 	/**
 	 * Full account name, e.g. Income:Amazon:<sellingPartnerId>:<marketplaceId>:ProductCharges. The scope segments are why two marketplaces can never share an account and a multi-currency total is unrepresentable rather than merely avoided. Profit is derived from the ROOT, never a list.
 	 */
@@ -1161,7 +1387,15 @@ export interface AmzfactLedgerPosting {
 	transactionId: string;
 }
 
-export interface AmzfactLedgerTransaction {
+/**
+ * One Amazon Finances document as a balanced double-entry transaction: the
+ * resolved, deduplicated, flattened form of the source document. Its postings
+ * live in amzfact_ledger_posting and its per-SKU dimension in
+ * amzfact_ledger_item.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzfact_ledger_transaction {
 	/**
 	 * postedDate of the released emission, or null while still deferred
 	 */
@@ -1252,7 +1486,14 @@ export interface AmzfactLedgerTransaction {
 	transactionType: string;
 }
 
-export interface AmzmsV1Adgroups {
+/**
+ * Latest Amazon Marketing Stream state of one ad group, per (advertiser,
+ * marketplace, ad group). Newest-version-wins current state, not a change log;
+ * the full event is in doc.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzms_v1__adgroups {
 	/**
 	 * Amazon advertising ad group ID
 	 */
@@ -1299,7 +1540,15 @@ export interface AmzmsV1Adgroups {
 	version: number;
 }
 
-export interface AmzmsV1Ads {
+/**
+ * Latest Amazon Marketing Stream state of one ad, per (advertiser,
+ * marketplace, ad). Newest-version-wins current state, not a change log. Ads
+ * carry no name on the stream; Sponsored Products ads identify their product
+ * by asin or sku inside doc.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzms_v1__ads {
 	/**
 	 * Parent ad group ID
 	 */
@@ -1346,7 +1595,15 @@ export interface AmzmsV1Ads {
 	version: number;
 }
 
-export interface AmzmsV1BudgetUsage {
+/**
+ * Amazon Marketing Stream budget-usage events, one row per (advertiser,
+ * marketplace, update time, budget scope, scope type, ad product), with the
+ * full event in doc. A portfolio-scoped event has no ad product and stores the
+ * empty string.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzms_v1__budget_usage {
 	/**
 	 * Amazon Advertiser ID (same as merchantId)
 	 */
@@ -1377,7 +1634,15 @@ export interface AmzmsV1BudgetUsage {
 	usage_updated_timestamp: InstantColumn;
 }
 
-export interface AmzmsV1Campaigns {
+/**
+ * Latest Amazon Marketing Stream state of one advertising campaign, per
+ * (advertiser, marketplace, campaign). Stream events carry the complete entity
+ * with a monotonic version and newest-version-wins, so this is current state
+ * rather than a change log; the full event is in doc.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzms_v1__campaigns {
 	/**
 	 * Ad product, e.g. SPONSORED_PRODUCTS
 	 */
@@ -1420,7 +1685,15 @@ export interface AmzmsV1Campaigns {
 	version: number;
 }
 
-export interface AmzmsV1SbClickstream {
+/**
+ * Amazon Marketing Stream Sponsored Brands clickstream events, append-only:
+ * one immutable row per event, keyed by idempotency id within the (advertiser,
+ * marketplace, time window) stream. Corrections arrive as new rows, so
+ * consumers must SUM over the window rather than take the latest row.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzms_v1__sb_clickstream {
 	/**
 	 * Ad group ID the metrics are attributed to
 	 */
@@ -1459,7 +1732,15 @@ export interface AmzmsV1SbClickstream {
 	time_window_start: InstantColumn;
 }
 
-export interface AmzmsV1SbConversion {
+/**
+ * Amazon Marketing Stream Sponsored Brands conversion events, append-only: one
+ * immutable row per event, keyed by idempotency id within the (advertiser,
+ * marketplace, time window) stream. Corrections arrive as new rows, so
+ * consumers must SUM over the window rather than take the latest row.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzms_v1__sb_conversion {
 	/**
 	 * Ad group ID the metrics are attributed to
 	 */
@@ -1498,7 +1779,15 @@ export interface AmzmsV1SbConversion {
 	time_window_start: InstantColumn;
 }
 
-export interface AmzmsV1SbRichMedia {
+/**
+ * Amazon Marketing Stream Sponsored Brands video and rich-media metrics,
+ * append-only: one immutable row per event, keyed by idempotency id within the
+ * (advertiser, marketplace, time window) stream. Corrections arrive as new
+ * rows, so consumers must SUM over the window rather than take the latest row.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzms_v1__sb_rich_media {
 	/**
 	 * Ad group ID the metrics are attributed to
 	 */
@@ -1537,7 +1826,15 @@ export interface AmzmsV1SbRichMedia {
 	time_window_start: InstantColumn;
 }
 
-export interface AmzmsV1SbTraffic {
+/**
+ * Amazon Marketing Stream Sponsored Brands traffic events, append-only: one
+ * immutable row per event, keyed by idempotency id within the (advertiser,
+ * marketplace, time window) stream. Corrections arrive as new rows, so
+ * consumers must SUM over the window rather than take the latest row.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzms_v1__sb_traffic {
 	/**
 	 * Ad group ID the metrics are attributed to
 	 */
@@ -1576,7 +1873,16 @@ export interface AmzmsV1SbTraffic {
 	time_window_start: InstantColumn;
 }
 
-export interface AmzmsV1SdConversion {
+/**
+ * Amazon Marketing Stream Sponsored Display conversion events, append-only:
+ * one immutable row per event, keyed by idempotency id within the (advertiser,
+ * marketplace, time window) stream. Sponsored Display attributes to a target
+ * rather than a keyword. Corrections arrive as new rows, so consumers must SUM
+ * over the window.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzms_v1__sd_conversion {
 	/**
 	 * Ad group ID the metrics are attributed to
 	 */
@@ -1615,7 +1921,16 @@ export interface AmzmsV1SdConversion {
 	time_window_start: InstantColumn;
 }
 
-export interface AmzmsV1SdTraffic {
+/**
+ * Amazon Marketing Stream Sponsored Display traffic events, append-only: one
+ * immutable row per event, keyed by idempotency id within the (advertiser,
+ * marketplace, time window) stream. Sponsored Display attributes to a target
+ * rather than a keyword. Corrections arrive as new rows, so consumers must SUM
+ * over the window.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzms_v1__sd_traffic {
 	/**
 	 * Ad group ID the metrics are attributed to
 	 */
@@ -1654,7 +1969,15 @@ export interface AmzmsV1SdTraffic {
 	time_window_start: InstantColumn;
 }
 
-export interface AmzmsV1SpConversion {
+/**
+ * Amazon Marketing Stream Sponsored Products conversion events, append-only:
+ * one immutable row per event, keyed by idempotency id within the (advertiser,
+ * marketplace, time window) stream. Corrections arrive as new rows, so
+ * consumers must SUM over the window rather than take the latest row.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzms_v1__sp_conversion {
 	/**
 	 * Ad group ID the metrics are attributed to
 	 */
@@ -1693,7 +2016,16 @@ export interface AmzmsV1SpConversion {
 	time_window_start: InstantColumn;
 }
 
-export interface AmzmsV1SpTraffic {
+/**
+ * Amazon Marketing Stream Sponsored Products traffic events, append-only: one
+ * immutable row per event, keyed by idempotency id within the (advertiser,
+ * marketplace, time window) stream. Retroactive corrections arrive as new rows
+ * rather than edits, so consumers must SUM the metrics in doc over the window
+ * instead of taking the latest row.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzms_v1__sp_traffic {
 	/**
 	 * Ad group ID the metrics are attributed to
 	 */
@@ -1732,7 +2064,16 @@ export interface AmzmsV1SpTraffic {
 	time_window_start: InstantColumn;
 }
 
-export interface AmzmsV1Targets {
+/**
+ * Latest Amazon Marketing Stream state of one advertising target, per
+ * (advertiser, marketplace, target). Newest-version-wins current state, not a
+ * change log. The target expression is in doc under exactly one of
+ * keywordTarget, productCategoryTarget or autoTarget, discriminated by
+ * targetType; adGroupId is null for campaign-level targets.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzms_v1__targets {
 	/**
 	 * Parent ad group ID (absent on campaign-level targets)
 	 */
@@ -1787,7 +2128,15 @@ export interface AmzmsV1Targets {
 	version: number;
 }
 
-export interface AmzopLatestByStoreAsin {
+/**
+ * Latest observation time per (type, merchant, marketplace, ASIN) across the
+ * listing and orders report sources. deleted flips to true when an ASIN drops
+ * out of a snapshot source such as the all-listings or open-listings report;
+ * the orders writer never sets it.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzop_latest__byStoreAsin {
 	asin: string;
 	deleted: Generated<boolean>;
 	marketplaceId: string;
@@ -1796,7 +2145,17 @@ export interface AmzopLatestByStoreAsin {
 	type: string;
 }
 
-export interface AmzreportALLORDERS {
+/**
+ * Order line items from the Amazon all-orders report
+ * (GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL), one row per
+ * (merchant, marketplace, Amazon order id, SKU). Common fields are explicit
+ * columns, EU VAT fields are broken out, and the remaining
+ * marketplace-specific fields stay in extras. The product name is deliberately
+ * not stored.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_ALL_ORDERS {
 	amazon_order_id: string;
 	asin: string | null;
 	created_at: InstantColumn;
@@ -1841,7 +2200,15 @@ export interface AmzreportALLORDERS {
 	vat_exclusive_shipping_price: Numeric | null;
 }
 
-export interface AmzreportCOUPONPERFORMANCE {
+/**
+ * Coupon performance from GET_COUPON_PERFORMANCE_REPORT, one row per
+ * (merchant, marketplace, coupon). Clips, redemptions, budget and sales are in
+ * doc, and asins is a derived lookup array. Amazon considers the data complete
+ * 24 hours after the coupon ends.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_COUPON_PERFORMANCE {
 	asins: string[];
 	couponId: string;
 	createdAt: InstantColumn;
@@ -1853,7 +2220,15 @@ export interface AmzreportCOUPONPERFORMANCE {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzreportFBACUSTOMERRETURNS {
+/**
+ * Customer returns received at Amazon fulfillment centres, from
+ * GET_FBA_FULFILLMENT_CUSTOMER_RETURNS_DATA, one row per returned unit group
+ * keyed (merchant, return date, order, FNSKU, index), with the disposition,
+ * reason and status of the return.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_FBA_CUSTOMER_RETURNS {
 	asin: string | null;
 	created_at: InstantColumn;
 	customer_comments: string | null;
@@ -1873,7 +2248,15 @@ export interface AmzreportFBACUSTOMERRETURNS {
 	updated_at: InstantColumn;
 }
 
-export interface AmzreportFBAFEEPREVIEW {
+/**
+ * Estimated Amazon selling and fulfilment fees per (merchant, marketplace,
+ * SKU), from GET_FBA_ESTIMATED_FBA_FEES_TXT_DATA, with the item's dimensions
+ * and weight. Region-specific fields stay in extras. A SKU that leaves the
+ * report is soft-deleted by stamping deleted_at rather than removed.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_FBA_FEE_PREVIEW {
 	asin: string | null;
 	created_at: InstantColumn;
 	currency: string | null;
@@ -1903,7 +2286,16 @@ export interface AmzreportFBAFEEPREVIEW {
 	your_price: Numeric | null;
 }
 
-export interface AmzreportFBAINVENTORYPLANNING {
+/**
+ * FBA inventory-health metrics per (merchant, marketplace, SKU) from
+ * GET_FBA_INVENTORY_PLANNING_DATA. The report's many highly region-variable
+ * columns are kept verbatim in doc under their original names. Scoped to one
+ * marketplace per row. A SKU that leaves the report is soft-deleted by
+ * stamping deleted_at rather than removed.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_FBA_INVENTORY_PLANNING {
 	created_at: InstantColumn;
 	deleted_at: InstantColumn | null;
 	doc: Json;
@@ -1914,7 +2306,15 @@ export interface AmzreportFBAINVENTORYPLANNING {
 	updated_at: InstantColumn;
 }
 
-export interface AmzreportFBAREIMBURSEMENTS {
+/**
+ * Itemized FBA inventory reimbursements from GET_FBA_REIMBURSEMENTS_DATA, one
+ * row per (merchant, reimbursement, index), with the reason, amount and the
+ * quantities reimbursed in cash and in inventory. Reversal and clawback rows
+ * carry the original reimbursement id and type.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_FBA_REIMBURSEMENTS {
 	amazon_order_id: string | null;
 	amount_total: Numeric | null;
 	approval_date: InstantColumn | null;
@@ -1937,7 +2337,14 @@ export interface AmzreportFBAREIMBURSEMENTS {
 	updated_at: InstantColumn;
 }
 
-export interface AmzreportFBAREMOVALORDERDETAIL {
+/**
+ * Removal-order lines from GET_FBA_FULFILLMENT_REMOVAL_ORDER_DETAIL_DATA, one
+ * row per (merchant, request time, order, SKU, index), with the requested,
+ * cancelled, disposed, shipped and in-process quantities and the removal fee.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_FBA_REMOVAL_ORDER_DETAIL {
 	cancelled_quantity: Numeric | null;
 	created_at: InstantColumn;
 	currency: string | null;
@@ -1961,7 +2368,15 @@ export interface AmzreportFBAREMOVALORDERDETAIL {
 	updated_at: InstantColumn;
 }
 
-export interface AmzreportFBAREMOVALSHIPMENTDETAIL {
+/**
+ * Removal-shipment tracking from
+ * GET_FBA_FULFILLMENT_REMOVAL_SHIPMENT_DETAIL_DATA, one row per (merchant,
+ * request time, order, SKU, index), with the carrier, tracking number,
+ * disposition and shipped quantity.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_FBA_REMOVAL_SHIPMENT_DETAIL {
 	carrier: string | null;
 	created_at: InstantColumn;
 	disposition: string | null;
@@ -1978,7 +2393,15 @@ export interface AmzreportFBAREMOVALSHIPMENTDETAIL {
 	updated_at: InstantColumn;
 }
 
-export interface AmzreportFBASTORAGEFEE {
+/**
+ * Estimated monthly FBA storage fees from GET_FBA_STORAGE_FEE_CHARGES_DATA,
+ * one row per (merchant, country, month of charge, FNSKU, fulfilment centre,
+ * index), with the item's measured volume and average quantity on hand.
+ * Region-specific fields stay in extras.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_FBA_STORAGE_FEE {
 	asin: string | null;
 	average_quantity_on_hand: Numeric | null;
 	average_quantity_pending_removal: Numeric | null;
@@ -2006,7 +2429,15 @@ export interface AmzreportFBASTORAGEFEE {
 	weight_units: string | null;
 }
 
-export interface AmzreportLEDGERDETAIL {
+/**
+ * FBA inventory movements from the Inventory Ledger detailed view
+ * (GET_LEDGER_DETAIL_VIEW_DATA), one row per event keyed (merchant, date,
+ * FNSKU, event type, index), with the quantity moved, the fulfilment centre,
+ * disposition and reason.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_LEDGER_DETAIL {
 	asin: string | null;
 	country: string | null;
 	created_at: InstantColumn;
@@ -2029,7 +2460,15 @@ export interface AmzreportLEDGERDETAIL {
 	updated_at: InstantColumn;
 }
 
-export interface AmzreportLEDGERSUMMARY {
+/**
+ * FBA inventory movement summaries from the Inventory Ledger summary view
+ * (GET_LEDGER_SUMMARY_VIEW_DATA), one row per (merchant, time unit, period
+ * start, location level, location, FNSKU, disposition). The ending warehouse
+ * balance is not stored: it is the starting balance plus the movement columns.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_LEDGER_SUMMARY {
 	asin: string | null;
 	created_at: InstantColumn;
 	customer_returns: Numeric | null;
@@ -2058,7 +2497,15 @@ export interface AmzreportLEDGERSUMMARY {
 	warehouse_transfer_in_out: Numeric | null;
 }
 
-export interface AmzreportMERCHANTLISTINGSALL {
+/**
+ * Every listing in the seller's catalogue, from
+ * GET_MERCHANT_LISTINGS_ALL_DATA, one row per (merchant, marketplace, seller
+ * SKU) with the report row in doc. A listing that leaves the report is
+ * soft-deleted by stamping deletedAt rather than removed.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_MERCHANT_LISTINGS_ALL {
 	createdAt: InstantColumn;
 	deletedAt: InstantColumn | null;
 	doc: Json;
@@ -2068,7 +2515,15 @@ export interface AmzreportMERCHANTLISTINGSALL {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzreportOPENLISTINGS {
+/**
+ * Listings currently available for sale, from
+ * GET_FLAT_FILE_OPEN_LISTINGS_DATA, one row per (merchant, marketplace, seller
+ * SKU) with the report row in doc. A listing that leaves the report is
+ * soft-deleted by stamping deletedAt rather than removed.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_OPEN_LISTINGS {
 	createdAt: InstantColumn;
 	deletedAt: InstantColumn | null;
 	doc: Json;
@@ -2078,7 +2533,15 @@ export interface AmzreportOPENLISTINGS {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzreportPROMOTIONPERFORMANCE {
+/**
+ * Promotion performance from GET_PROMOTION_PERFORMANCE_REPORT, one row per
+ * (merchant, marketplace, promotion): glance views, units sold and revenue,
+ * per-product metrics in includedProducts, and a derived asins lookup array.
+ * lastUpdatedDateTime can move long after the promotion ends.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_PROMOTION_PERFORMANCE {
 	asins: string[];
 	createdAt: InstantColumn;
 	createdDateTime: InstantColumn;
@@ -2099,7 +2562,14 @@ export interface AmzreportPROMOTIONPERFORMANCE {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzreportSALESANDTRAFFICSkuByDay {
+/**
+ * Daily sales and traffic per (merchant, marketplace, date, SKU) from
+ * GET_SALES_AND_TRAFFIC_REPORT, with the report's salesByAsin and
+ * trafficByAsin blocks in sales and traffic.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_SALES_AND_TRAFFIC__skuByDay {
 	childAsin: string;
 	createdAt: InstantColumn;
 	date: PlainDateColumn;
@@ -2112,7 +2582,14 @@ export interface AmzreportSALESANDTRAFFICSkuByDay {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzreportSALESANDTRAFFICStore {
+/**
+ * Storefront-wide sales and traffic per (merchant, marketplace, granularity,
+ * date) from GET_SALES_AND_TRAFFIC_REPORT — not broken down by SKU — with the
+ * report's salesByDate and trafficByDate blocks in sales and traffic.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_SALES_AND_TRAFFIC__store {
 	createdAt: InstantColumn;
 	date: PlainDateColumn;
 	dateGranularity: string;
@@ -2123,7 +2600,15 @@ export interface AmzreportSALESANDTRAFFICStore {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzreportSEARCHCATALOGPERFORMANCE {
+/**
+ * Brand Analytics search catalogue performance per ASIN and reporting period,
+ * from GET_BRAND_ANALYTICS_SEARCH_CATALOG_PERFORMANCE_REPORT. The impression,
+ * click, cart-add and purchase blocks hold absolute metrics; unlike
+ * amzreport_SEARCH_QUERY_PERFORMANCE there is no search-query dimension.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_SEARCH_CATALOG_PERFORMANCE {
 	asin: string;
 	cartAddData: Json;
 	clickData: Json;
@@ -2138,7 +2623,15 @@ export interface AmzreportSEARCHCATALOGPERFORMANCE {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzreportSEARCHQUERYPERFORMANCE {
+/**
+ * Brand Analytics search query performance per (ASIN, search query, reporting
+ * period), from GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT, with the
+ * query's score and volume and the impression, click, cart-add and purchase
+ * blocks.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_SEARCH_QUERY_PERFORMANCE {
 	asin: string;
 	cartAddData: Json;
 	clickData: Json;
@@ -2156,7 +2649,16 @@ export interface AmzreportSEARCHQUERYPERFORMANCE {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzreportSETTLEMENTV2 {
+/**
+ * Transaction rows of a V2 settlement report
+ * (GET_V2_SETTLEMENT_REPORT_DATA_FLAT_FILE_V2), one row per (merchant,
+ * settlement, index), where index is the 1-based position in the report
+ * excluding its summary row. The settlement's own totals are in
+ * amzreport_SETTLEMENT_V2__summary.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_SETTLEMENT_V2 {
 	adjustment_id: string | null;
 	amount: Numeric | null;
 	amount_description: string | null;
@@ -2179,7 +2681,14 @@ export interface AmzreportSETTLEMENTV2 {
 	transaction_type: string | null;
 }
 
-export interface AmzreportSETTLEMENTV2Summary {
+/**
+ * One row per V2 settlement (GET_V2_SETTLEMENT_REPORT_DATA_FLAT_FILE_V2): the
+ * settlement period, deposit date and total amount, taken from the report's
+ * summary row. The individual transactions are in amzreport_SETTLEMENT_V2.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_SETTLEMENT_V2__summary {
 	created_at: InstantColumn;
 	currency: string;
 	deposit_date: InstantColumn;
@@ -2191,7 +2700,14 @@ export interface AmzreportSETTLEMENTV2Summary {
 	updated_at: InstantColumn;
 }
 
-export interface AmzspapiCatalogItemsV20220401Catalogitem {
+/**
+ * Core SP-API Catalog Items 2022-04-01 record per (marketplace_code, asin):
+ * dimensions, identifiers, thumbnail, product type, parent ASIN, variation
+ * theme and summaries.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_catalog_items_v20220401__catalogitem {
 	asin: string;
 	created_at: InstantColumn;
 	dimensions: Json | null;
@@ -2205,7 +2721,13 @@ export interface AmzspapiCatalogItemsV20220401Catalogitem {
 	variation_theme: Json | null;
 }
 
-export interface AmzspapiCatalogItemsV20220401Itemattributes {
+/**
+ * The full SP-API Catalog Items 2022-04-01 attribute document per
+ * (marketplace_code, asin), stored verbatim in data.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_catalog_items_v20220401__itemattributes {
 	asin: string;
 	created_at: InstantColumn;
 	data: Json;
@@ -2213,7 +2735,13 @@ export interface AmzspapiCatalogItemsV20220401Itemattributes {
 	modified_at: InstantColumn;
 }
 
-export interface AmzspapiCatalogItemsV20220401ItemattributesLang {
+/**
+ * The language-specific SP-API Catalog Items 2022-04-01 attribute document per
+ * (marketplace_code, lang, asin), stored verbatim in data.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_catalog_items_v20220401__itemattributes_lang {
 	asin: string;
 	created_at: InstantColumn;
 	data: Json;
@@ -2222,7 +2750,13 @@ export interface AmzspapiCatalogItemsV20220401ItemattributesLang {
 	modified_at: InstantColumn;
 }
 
-export interface AmzspapiCatalogItemsV20220401Itemimages {
+/**
+ * The SP-API Catalog Items 2022-04-01 image set per (marketplace_code, asin),
+ * stored verbatim in images.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_catalog_items_v20220401__itemimages {
 	asin: string;
 	created_at: InstantColumn;
 	images: Json;
@@ -2230,7 +2764,14 @@ export interface AmzspapiCatalogItemsV20220401Itemimages {
 	modified_at: InstantColumn;
 }
 
-export interface AmzspapiFbaInventoryV1InventorySummary {
+/**
+ * Latest FBA inventory summary per (merchant, marketplace, seller SKU) from
+ * SP-API FBA Inventory v1, with the full summary — fulfillable, inbound,
+ * reserved, researching and unfulfillable quantities — in doc.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_fbaInventory_v1__InventorySummary {
 	contentHash: string | null;
 	createdAt: InstantColumn;
 	doc: Json;
@@ -2240,7 +2781,16 @@ export interface AmzspapiFbaInventoryV1InventorySummary {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzspapiFinancesV20240619Transaction {
+/**
+ * One SP-API Finances 2024-06-19 transaction event per (merchantId,
+ * transactionKey), with the full event in doc. The itemProjection columns
+ * describe this row's projection into
+ * amzspapi_finances_v20240619__TransactionItemSummary and are authoritative
+ * only about that projection, never about the Amazon document.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_finances_v20240619__Transaction {
 	createdAt: InstantColumn;
 	/**
 	 * The full Transaction object from the API; persisted as JSONB
@@ -2272,7 +2822,16 @@ export interface AmzspapiFinancesV20240619Transaction {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzspapiFinancesV20240619TransactionItemProjectionState {
+/**
+ * Completeness state of the Finance item projection, one row per merchant.
+ * READY means the projected item rows can be trusted for the recorded
+ * extractorVersion; BACKFILLING, VERIFYING, STALE and FAILED all mean they
+ * cannot. Having rows, or merely having agreeing counts, does not establish
+ * readiness.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_finances_v20240619__TransactionItemProjectionState {
 	createdAt: InstantColumn;
 	cursorTransactionKey: string | null;
 	/**
@@ -2321,7 +2880,17 @@ export interface AmzspapiFinancesV20240619TransactionItemProjectionState {
 	verifiedAt: InstantColumn | null;
 }
 
-export interface AmzspapiFinancesV20240619TransactionItemSummary {
+/**
+ * Normalized projection of one items entry of an
+ * amzspapi_finances_v20240619__Transaction row, keyed by its zero-based
+ * itemIndex. The parent transaction stays authoritative for type, status,
+ * time, marketplace and order; the amounts here pre-sum top-level breakdowns
+ * only, so nothing is double counted. Trust these rows only when the
+ * merchant's projection state is READY for your extractor version.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_finances_v20240619__TransactionItemSummary {
 	/**
 	 * Sum of every top-level breakdown amount; zero when none
 	 */
@@ -2387,7 +2956,14 @@ export interface AmzspapiFinancesV20240619TransactionItemSummary {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzspapiOrdersV0Order {
+/**
+ * One SP-API Orders v0 order per (merchantId, marketplaceId, orderKey), with
+ * the full order document in doc. Amazon's own order number is in
+ * amazonOrderId, which is indexed for lookup.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_orders_v0__Order {
 	amazonOrderId: string;
 	createdAt: InstantColumn;
 	doc: Json;
@@ -2398,7 +2974,14 @@ export interface AmzspapiOrdersV0Order {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzspapiOrdersV0OrderItem {
+/**
+ * One SP-API Orders v0 order line per (merchantId, marketplaceId,
+ * orderItemKey), with the full item document in doc. orderKey joins to
+ * amzspapi_orders_v0__Order.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_orders_v0__OrderItem {
 	createdAt: InstantColumn;
 	doc: Json;
 	marketplaceId: string;
@@ -2410,7 +2993,14 @@ export interface AmzspapiOrdersV0OrderItem {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzspapiSearchCatalogItemsV2020Asin {
+/**
+ * Per-ASIN metadata dimension for search-catalog scrapes, keyed
+ * (marketplaceId, asin): item name, brand, image, parent ASIN and summaries.
+ * Rows are overwritten in place on change, so no history is kept.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_searchCatalogItems_v2020__asin {
 	/**
 	 * The ASIN this metadata describes
 	 */
@@ -2449,7 +3039,14 @@ export interface AmzspapiSearchCatalogItemsV2020Asin {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzspapiSearchCatalogItemsV2020Rank {
+/**
+ * One ranked ASIN per SP-API searchCatalogItems scrape, keyed (targetId,
+ * scrapeTime, rank). Deliberately lean — per-ASIN metadata lives in
+ * amzspapi_searchCatalogItems_v2020__asin. Partitioned monthly by scrapeTime.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_searchCatalogItems_v2020__rank {
 	/**
 	 * The ranked ASIN at this position
 	 */
@@ -2468,7 +3065,14 @@ export interface AmzspapiSearchCatalogItemsV2020Rank {
 	targetId: Int8;
 }
 
-export interface AmzspapiSearchCatalogItemsV2020Scrape {
+/**
+ * One completed SP-API searchCatalogItems scrape per (targetId, scrapeTime),
+ * recording the depth, page and item counts and the run's status. The ranked
+ * ASINs live in amzspapi_searchCatalogItems_v2020__rank under the same key.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_searchCatalogItems_v2020__scrape {
 	/**
 	 * Number of result pages requested for this scrape
 	 */
@@ -2499,7 +3103,14 @@ export interface AmzspapiSearchCatalogItemsV2020Scrape {
 	targetId: Int8;
 }
 
-export interface AmzspapiSearchCatalogItemsV2020Target {
+/**
+ * Registry of SP-API searchCatalogItems scrape units: one row per (merchant,
+ * marketplace, keyword, locale), addressed by the deterministic targetId that
+ * keys its scrapes and ranks.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_searchCatalogItems_v2020__target {
 	/**
 	 * When this target row was first created
 	 */
@@ -2530,14 +3141,29 @@ export interface AmzspapiSearchCatalogItemsV2020Target {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzspapiSellersV1Account {
+/**
+ * The seller account as SP-API Sellers v1 reports it, one row per merchant:
+ * business type, selling plan, primary contact and registered business
+ * details, all in doc.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_sellers_v1__account {
 	createdAt: InstantColumn;
 	doc: Json;
 	merchantId: string;
 	updatedAt: InstantColumn;
 }
 
-export interface AmzspapiSellersV1Marketplace {
+/**
+ * One row per Amazon marketplace as SP-API Sellers v1 reports it, with
+ * country, name, default currency and language, and storefront domain. isReal
+ * is false for entries that are not sellable storefronts, such as the
+ * Non-Amazon set and the invoicing shadow marketplace.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_sellers_v1__marketplace {
 	countryCode: string;
 	createdAt: InstantColumn;
 	defaultCurrencyCode: string;
@@ -2549,7 +3175,14 @@ export interface AmzspapiSellersV1Marketplace {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzspapiSellersV1MarketplaceParticipation {
+/**
+ * One row per (merchant, marketplace) participation from SP-API Sellers v1
+ * getMarketplaceParticipations: whether the seller participates, whether any
+ * listings are suspended, and the store name.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_sellers_v1__marketplaceParticipation {
 	createdAt: InstantColumn;
 	doc: Json;
 	id: string;
@@ -2560,7 +3193,15 @@ export interface AmzspapiSellersV1MarketplaceParticipation {
 	updatedAt: InstantColumn;
 }
 
-export interface AmzspstreamACCOUNTSTATUSCHANGED {
+/**
+ * Append-only landing table for Amazon ACCOUNT_STATUS_CHANGED notifications,
+ * one row per message, carrying the previous and current account status and
+ * the full notification in payload. Re-delivering the same notification is a
+ * no-op.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspstream_ACCOUNT_STATUS_CHANGED {
 	/**
 	 * Account status after the change (e.g. NORMAL, AT_RISK, DEACTIVATED)
 	 */
@@ -2599,7 +3240,14 @@ export interface AmzspstreamACCOUNTSTATUSCHANGED {
 	receivedAt: InstantColumn;
 }
 
-export interface AmzspstreamANYOFFERCHANGED {
+/**
+ * Append-only landing table for Amazon ANY_OFFER_CHANGED notifications, one
+ * row per message, carrying the affected ASIN and the full notification in
+ * payload. Re-delivering the same notification is a no-op.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspstream_ANY_OFFER_CHANGED {
 	/**
 	 * ASIN from OfferChangeTrigger.ASIN
 	 */
@@ -2638,7 +3286,14 @@ export interface AmzspstreamANYOFFERCHANGED {
 	receivedAt: InstantColumn;
 }
 
-export interface AmzspstreamB2BANYOFFERCHANGED {
+/**
+ * Append-only landing table for Amazon B2B_ANY_OFFER_CHANGED notifications,
+ * one row per message, carrying the affected ASIN and the full notification in
+ * payload. Re-delivering the same notification is a no-op.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspstream_B2B_ANY_OFFER_CHANGED {
 	/**
 	 * ASIN from OfferChangeTrigger.ASIN
 	 */
@@ -2677,7 +3332,15 @@ export interface AmzspstreamB2BANYOFFERCHANGED {
 	receivedAt: InstantColumn;
 }
 
-export interface AmzspstreamDETAILPAGETRAFFICEVENT {
+/**
+ * Append-only landing table for Amazon DETAIL_PAGE_TRAFFIC_EVENT
+ * notifications. One row per traffic-event element, so a single message fans
+ * out into several rows, each carrying glance views for one ASIN over one
+ * start-to-end window. Re-delivering the same notification is a no-op.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspstream_DETAIL_PAGE_TRAFFIC_EVENT {
 	/**
 	 * ASIN from the traffic-event element
 	 */
@@ -2728,7 +3391,15 @@ export interface AmzspstreamDETAILPAGETRAFFICEVENT {
 	startTime: string;
 }
 
-export interface AmzspstreamFBAINVENTORYAVAILABILITYCHANGES {
+/**
+ * Append-only landing table for Amazon FBA_INVENTORY_AVAILABILITY_CHANGES
+ * notifications. One row per marketplace entry, so a single message fans out
+ * into one row per marketplace. Re-delivering the same notification is a
+ * no-op.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspstream_FBA_INVENTORY_AVAILABILITY_CHANGES {
 	/**
 	 * ASIN from Payload.ASIN
 	 */
@@ -2775,7 +3446,14 @@ export interface AmzspstreamFBAINVENTORYAVAILABILITYCHANGES {
 	sku: string;
 }
 
-export interface AmzspstreamFEEDPROCESSINGFINISHED {
+/**
+ * Append-only landing table for Amazon FEED_PROCESSING_FINISHED notifications,
+ * one row per message, carrying the feed id, feed type and processing status.
+ * Re-delivering the same notification is a no-op.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspstream_FEED_PROCESSING_FINISHED {
 	/**
 	 * Notification eventTime
 	 */
@@ -2818,7 +3496,14 @@ export interface AmzspstreamFEEDPROCESSINGFINISHED {
 	receivedAt: InstantColumn;
 }
 
-export interface AmzspstreamFEEPROMOTION {
+/**
+ * Append-only landing table for Amazon FEE_PROMOTION notifications, one row
+ * per message, carrying the fee promotion type. Re-delivering the same
+ * notification is a no-op.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspstream_FEE_PROMOTION {
 	/**
 	 * Notification EventTime
 	 */
@@ -2857,7 +3542,15 @@ export interface AmzspstreamFEEPROMOTION {
 	receivedAt: InstantColumn;
 }
 
-export interface AmzspstreamFULFILLMENTORDERSTATUS {
+/**
+ * Append-only landing table for Amazon FULFILLMENT_ORDER_STATUS notifications,
+ * one row per message, carrying the seller fulfillment order id, event type
+ * and fulfillment order status. Re-delivering the same notification is a
+ * no-op.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspstream_FULFILLMENT_ORDER_STATUS {
 	/**
 	 * Notification EventTime
 	 */
@@ -2900,7 +3593,14 @@ export interface AmzspstreamFULFILLMENTORDERSTATUS {
 	sellerFulfillmentOrderId: string;
 }
 
-export interface AmzspstreamORDERCHANGE {
+/**
+ * Append-only landing table for Amazon ORDER_CHANGE notifications, one row per
+ * message, with the full notification in payload. Re-delivering the same
+ * notification is a no-op.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspstream_ORDER_CHANGE {
 	/**
 	 * Amazon order id the change pertains to
 	 */
@@ -2939,7 +3639,14 @@ export interface AmzspstreamORDERCHANGE {
 	receivedAt: InstantColumn;
 }
 
-export interface AmzspstreamPRICINGHEALTH {
+/**
+ * Append-only landing table for Amazon PRICING_HEALTH notifications, one row
+ * per message, carrying the issue type and affected ASIN. Re-delivering the
+ * same notification is a no-op.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspstream_PRICING_HEALTH {
 	/**
 	 * ASIN from payload.offerChangeTrigger.asin
 	 */
@@ -2982,7 +3689,14 @@ export interface AmzspstreamPRICINGHEALTH {
 	receivedAt: InstantColumn;
 }
 
-export interface AmzspstreamREPORTPROCESSINGFINISHED {
+/**
+ * Append-only landing table for Amazon REPORT_PROCESSING_FINISHED
+ * notifications, one row per message, carrying the report id, report type and
+ * processing status. Re-delivering the same notification is a no-op.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspstream_REPORT_PROCESSING_FINISHED {
 	/**
 	 * Notification eventTime
 	 */
@@ -3025,7 +3739,15 @@ export interface AmzspstreamREPORTPROCESSINGFINISHED {
 	reportType: string;
 }
 
-export interface BrandConfigAmazonAsin {
+/**
+ * Customer-editable per-ASIN configuration: the ontology variant and product
+ * family an ASIN belongs to, its display labels with optional per-country
+ * overrides, and a description.
+ *
+ * Writable: it is in `WritableDB`, so it can be written through the `write`
+ * handle `createDb()` returns.
+ */
+export interface DbTable_brand_config_amazon_asin {
 	asin: string;
 	countryToFamily: Json | null;
 	countryToLabelInFamily: Json | null;
@@ -3038,7 +3760,18 @@ export interface BrandConfigAmazonAsin {
 	updatedAt: Generated<InstantColumn>;
 }
 
-export interface BrandConfigAmazonAttributes {
+/**
+ * Customer-editable, Amazon-keyed scoped attributes — unit costs, VAT rates,
+ * unsellable-return loss, the brand-registry flag and inventory-planning
+ * inputs. One row is one attribute value for one scope node over one
+ * effective-dated interval, where dateLast is inclusive and NULL means still
+ * in force. Resolution takes the most specific scope covering a date: SKU,
+ * then ASIN, family, store, country.
+ *
+ * Writable: it is in `WritableDB`, so it can be written through the `write`
+ * handle `createDb()` returns.
+ */
+export interface DbTable_brand_config_amazon_attributes {
 	attribute: string;
 	/**
 	 * HIGH | MED | LOW
@@ -3061,7 +3794,16 @@ export interface BrandConfigAmazonAttributes {
 	value: Numeric;
 }
 
-export interface BrandConfigAmazonFamily {
+/**
+ * Customer-editable product families, grouping related ASINs under an ontology
+ * category. msku is an optional family-level identifier and deliberately has
+ * no foreign key, because it may name a conceptual SKU that exists as no
+ * variant row.
+ *
+ * Writable: it is in `WritableDB`, so it can be written through the `write`
+ * handle `createDb()` returns.
+ */
+export interface DbTable_brand_config_amazon_family {
 	category: string | null;
 	createdAt: Generated<InstantColumn>;
 	description: string | null;
@@ -3071,7 +3813,17 @@ export interface BrandConfigAmazonFamily {
 	updatedAt: Generated<InstantColumn>;
 }
 
-export interface BrandConfigBusinessAttributes {
+/**
+ * Customer-editable workspace-level business attributes, such as business age,
+ * employee count and valuation multiple. One row is one attribute value over
+ * one effective-dated interval, where dateLast is inclusive and NULL means
+ * still in force. Unlike brand_config_amazon_attributes these describe the
+ * business itself, so there is no merchant or country scope.
+ *
+ * Writable: it is in `WritableDB`, so it can be written through the `write`
+ * handle `createDb()` returns.
+ */
+export interface DbTable_brand_config_business_attributes {
 	attribute: string;
 	/**
 	 * HIGH | MED | LOW
@@ -3092,7 +3844,15 @@ export interface BrandConfigBusinessAttributes {
 	value: Numeric;
 }
 
-export interface BrandConfigOntologyCategory {
+/**
+ * Customer-editable ontology categories: one row per category, holding the
+ * authored property values in data and the inherited-and-resolved values in
+ * dataResolved.
+ *
+ * Writable: it is in `WritableDB`, so it can be written through the `write`
+ * handle `createDb()` returns.
+ */
+export interface DbTable_brand_config_ontology_category {
 	category: string;
 	createdAt: Generated<InstantColumn>;
 	data: Json;
@@ -3101,7 +3861,15 @@ export interface BrandConfigOntologyCategory {
 	updatedAt: Generated<InstantColumn>;
 }
 
-export interface BrandConfigOntologyMetadata {
+/**
+ * Declares the ontology properties available to category and variant
+ * configuration: one row per property, with its value type, allowed values and
+ * whether it applies to categories, variants or both. Customer-editable.
+ *
+ * Writable: it is in `WritableDB`, so it can be written through the `write`
+ * handle `createDb()` returns.
+ */
+export interface DbTable_brand_config_ontology_metadata {
 	appliesTo: Generated<string>;
 	createdAt: Generated<InstantColumn>;
 	description: string | null;
@@ -3111,7 +3879,15 @@ export interface BrandConfigOntologyMetadata {
 	valueType: string;
 }
 
-export interface BrandConfigOntologyVariant {
+/**
+ * Customer-editable ontology variants: one row per merchant SKU, assigned to a
+ * category, holding the authored property values in data and the
+ * inherited-and-resolved values in dataResolved.
+ *
+ * Writable: it is in `WritableDB`, so it can be written through the `write`
+ * handle `createDb()` returns.
+ */
+export interface DbTable_brand_config_ontology_variant {
 	category: string;
 	createdAt: Generated<InstantColumn>;
 	data: Json;
@@ -3120,7 +3896,19 @@ export interface BrandConfigOntologyVariant {
 	updatedAt: Generated<InstantColumn>;
 }
 
-export interface BrandOntologyAmazonAsin {
+/**
+ * Read view of the customer-editable per-ASIN configuration
+ * (brand_config_amazon_asin) with its ontology variant and product family
+ * resolved, one row per configured ASIN. `data` is the VARIANT's resolved
+ * property values and is null for an ASIN with no variant. `variantCategory`
+ * and `familyCategory` are reported separately because an ASIN can be assigned
+ * to a family whose category differs from its variant's. ONLY ASINs that
+ * resolve to a variant or to a family appear: an ASIN configured with neither
+ * is filtered out, so this view is not a complete list of configured ASINs.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbView_brand_ontology_amazon_asin {
 	asin: string | null;
 	countryToFamily: Json | null;
 	countryToLabelInFamily: Json | null;
@@ -3134,7 +3922,16 @@ export interface BrandOntologyAmazonAsin {
 	variantCategory: string | null;
 }
 
-export interface BrandOntologyAmazonFamily {
+/**
+ * Read view of the customer-editable Amazon product families
+ * (brand_config_amazon_family) joined to the ontology category each belongs
+ * to, one row per family. `data` is the CATEGORY's resolved property values,
+ * not the family's — a family carries no properties of its own. A family whose
+ * category is missing does not appear, because the join is inner.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbView_brand_ontology_amazon_family {
 	category: string | null;
 	data: Json | null;
 	description: string | null;
@@ -3143,26 +3940,60 @@ export interface BrandOntologyAmazonFamily {
 	msku: string | null;
 }
 
-export interface BrandOntologyCategory {
+/**
+ * Read view of the customer-editable ontology categories
+ * (brand_config_ontology_category), one row per category. `data` is the
+ * RESOLVED property values — the category's own values with anything inherited
+ * already folded in — and is what a reader normally wants; `dataSelf` is the
+ * values authored on this category alone. Note the names invert the underlying
+ * table, where the authored column is `data`.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbView_brand_ontology_category {
 	category: string | null;
 	data: Json | null;
 	dataSelf: Json | null;
 	description: string | null;
 }
 
-export interface BrandOntologyVariant {
+/**
+ * Read view of the customer-editable ontology variants
+ * (brand_config_ontology_variant), one row per merchant SKU, with the category
+ * it is assigned to. `data` is the RESOLVED property values, with the
+ * category's values already folded in; the values authored on the variant
+ * alone are not exposed here.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbView_brand_ontology_variant {
 	category: string | null;
 	data: Json | null;
 	msku: string | null;
 }
 
-export interface DatabrillSchemaVersion {
+/**
+ * Records which version of the published Databrill tenant schema contract this
+ * database satisfies, one row per component. Written by the vendor's
+ * provisioning path and read by the published client package to tell you
+ * whether your installed package and this database still agree.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_databrill_schema_version {
 	component: string;
 	updatedAt: Generated<InstantColumn>;
 	version: string;
 }
 
-export interface FxEcbRateHistory {
+/**
+ * European Central Bank foreign-exchange reference rates, append-only: one row
+ * per (currency, frequency, period). Rates are EUR-pivot — value is the number
+ * of units of the currency per 1 EUR — and EUR itself never has a row.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_fx_ecb_rate_history {
 	createdAt: InstantColumn;
 	decimals: number;
 	period: string;
@@ -3172,7 +4003,15 @@ export interface FxEcbRateHistory {
 	value: number;
 }
 
-export interface FxEcbRateLatest {
+/**
+ * The most recent European Central Bank foreign-exchange reference rate per
+ * (currency, frequency), a cache derived from fx_ecb_rate_history. Same
+ * EUR-pivot semantics: value is units of the currency per 1 EUR, and EUR
+ * itself never has a row.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_fx_ecb_rate_latest {
 	createdAt: InstantColumn;
 	decimals: number;
 	period: string;
@@ -3182,7 +4021,16 @@ export interface FxEcbRateLatest {
 	value: number;
 }
 
-export interface TflAsnsV1Asn {
+/**
+ * One The Fulfillment Lab (GFS) advance shipping notice header per
+ * (connectorId, id), with carrier, tracking, container and the expected,
+ * received and delivered quantities. An ASN carries no creation timestamp of
+ * any kind. detailsFetchedAt is ours rather than GFS's: NULL means the detail
+ * fetch is still pending.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_tfl_asns_v1__Asn {
 	/**
 	 * `asn.asnNumber`, the human-facing ASN reference. A STRING even when it looks numeric
 	 */
@@ -3265,7 +4113,16 @@ export interface TflAsnsV1Asn {
 	warehouseId: number;
 }
 
-export interface TflAsnsV1AsnItem {
+/**
+ * One element of a The Fulfillment Lab (GFS) ASN detail's products, inserts or
+ * containers array, keyed (connectorId, asnId, kind, id), where kind
+ * discriminates the three. id is the line id and itemId is the product
+ * reference; they must not be conflated. Items are populated only by the ASN
+ * detail route.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_tfl_asns_v1__AsnItem {
 	/**
 	 * The parent ASN's `asn.id`, joining to `tfl_asns_v1__Asn.id`
 	 */
@@ -3308,7 +4165,17 @@ export interface TflAsnsV1AsnItem {
 	updatedAt: InstantColumn;
 }
 
-export interface TflInventorySummaryV1ProductWarehouse {
+/**
+ * The Fulfillment Lab (GFS) inventory movement aggregates for one product at
+ * one warehouse over one calendar month, keyed (connectorId, startDate,
+ * endDate, productName, warehouseName). Every measure is window-relative,
+ * which is why the window is part of the key, and several can go negative.
+ * GFS's ALL rollup row is validated and then discarded rather than stored, so
+ * an unfiltered SUM is not doubled.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_tfl_inventorySummary_v1__ProductWarehouse {
 	/**
 	 * `warehouseSummaries[].beginningInventory`; level at the window's start
 	 */
@@ -3375,7 +4242,16 @@ export interface TflInventorySummaryV1ProductWarehouse {
 	warehouseName: string;
 }
 
-export interface TflOrdersV1Order {
+/**
+ * One The Fulfillment Lab (GFS) order header per (connectorId, id).
+ * cartOrderId is the merchant's own cart order id, such as a Shopify order id
+ * or an Amazon order number, and is the join key to the rest of the business
+ * rather than the identity. Buyer contact details are deliberately not
+ * promoted to columns and stay inside doc.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_tfl_orders_v1__Order {
 	/**
 	 * `order.cartOrderId` — the MERCHANT's cart order id (a Shopify order id, or an Amazon order number). The cross-connector join key to the Shopify connector. A join key, never the identity
 	 */
@@ -3474,7 +4350,16 @@ export interface TflOrdersV1Order {
 	warehouseName: string | null;
 }
 
-export interface TflOrdersV1OrderItem {
+/**
+ * One line of a The Fulfillment Lab (GFS) order, keyed (connectorId, id),
+ * joining to tfl_orders_v1__Order by orderId. Lines are populated only by the
+ * order detail route — the list route returns none. Upserts never delete, so a
+ * line cancelled at GFS lingers and a naive SUM over an order's items can
+ * exceed the order.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_tfl_orders_v1__OrderItem {
 	/**
 	 * SovConnector.connectorId of the thefulfillmentlab connector that fetched this order item
 	 */
@@ -3525,7 +4410,15 @@ export interface TflOrdersV1OrderItem {
 	updatedAt: InstantColumn;
 }
 
-export interface TflOtsShipmentsV1OtsShipment {
+/**
+ * One The Fulfillment Lab (GFS) off-the-shelf shipment header per
+ * (connectorId, id), with its warehouse, status, category and reference
+ * identifiers. detailsFetchedAt is ours rather than GFS's: NULL means the
+ * detail fetch is still pending.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_tfl_otsShipments_v1__OtsShipment {
 	/**
 	 * `otsShipment.category`; observed Disposal / Legacy / Outbound
 	 */
@@ -3592,7 +4485,16 @@ export interface TflOtsShipmentsV1OtsShipment {
 	warehouseId: number;
 }
 
-export interface TflOtsShipmentsV1OtsShipmentItem {
+/**
+ * One line of a The Fulfillment Lab (GFS) off-the-shelf shipment, keyed
+ * (connectorId, otsShipmentId, productId). The payload carries no line id, so
+ * a product that repeats within one shipment is aggregated into a single row
+ * with the quantities summed. Items are populated only by the OTS detail
+ * route.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_tfl_otsShipments_v1__OtsShipmentItem {
 	/**
 	 * SovConnector.connectorId of the thefulfillmentlab connector that fetched this OTS item
 	 */
@@ -3627,7 +4529,16 @@ export interface TflOtsShipmentsV1OtsShipmentItem {
 	updatedAt: InstantColumn;
 }
 
-export interface TflProductsV1Inventory {
+/**
+ * Current The Fulfillment Lab (GFS) product inventory per (connectorId,
+ * productId) — quantity, allocated and available — overwritten each cycle.
+ * This is the durable product dimension and holds the only clean
+ * product-id-to-product-name mapping the API exposes. It keeps no history; the
+ * daily on-hand series is in tfl_products_v1__WarehouseInventory.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_tfl_products_v1__Inventory {
 	/**
 	 * `product.allocated`, reserved against open orders. MEASURED integral
 	 */
@@ -3666,7 +4577,14 @@ export interface TflProductsV1Inventory {
 	updatedAt: InstantColumn;
 }
 
-export interface TflProductsV1Sku {
+/**
+ * One The Fulfillment Lab (GFS) SKU header per (connectorId, sku), with its
+ * vendor-assigned type. The products a SKU ships, and their bundle
+ * multipliers, are in tfl_products_v1__SkuProduct.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_tfl_products_v1__Sku {
 	/**
 	 * SovConnector.connectorId of the thefulfillmentlab connector that fetched this SKU
 	 */
@@ -3693,7 +4611,16 @@ export interface TflProductsV1Sku {
 	updatedAt: InstantColumn;
 }
 
-export interface TflProductsV1SkuProduct {
+/**
+ * Maps a The Fulfillment Lab (GFS) SKU to the products it ships, one row per
+ * (connectorId, sku, productId), with qtyMultiplier expressing bundles.
+ * productName is a convenience copy and must not be joined on — two different
+ * product ids already share one name. Upserts never delete, so a withdrawn
+ * mapping lingers.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_tfl_products_v1__SkuProduct {
 	/**
 	 * SovConnector.connectorId of the thefulfillmentlab connector that fetched this mapping
 	 */
@@ -3728,7 +4655,16 @@ export interface TflProductsV1SkuProduct {
 	updatedAt: InstantColumn;
 }
 
-export interface TflProductsV1WarehouseInventory {
+/**
+ * Daily snapshot of The Fulfillment Lab (GFS) warehouse inventory per
+ * (connectorId, localdate, productId, warehouseId). localdate is part of the
+ * key deliberately: the endpoint carries no timestamp and only ever reports
+ * the present, so on-hand history is unrecoverable for any day that is
+ * overwritten or missed.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_tfl_products_v1__WarehouseInventory {
 	/**
 	 * `row.allocated`, reserved at this warehouse on `localdate`. MEASURED integral
 	 */
@@ -3775,7 +4711,15 @@ export interface TflProductsV1WarehouseInventory {
 	warehouseName: string | null;
 }
 
-export interface TflShipmentsV1Shipment {
+/**
+ * One The Fulfillment Lab (GFS) shipment per (connectorId, id), with its
+ * fulfilment, container, shipping and total charges. cartOrderIds is an array
+ * because GFS can join several orders into one shipment, and it must not be
+ * reduced to a single id.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_tfl_shipments_v1__Shipment {
 	/**
 	 * `shipment.cartOrderIds` — the MERCHANT cart order ids this shipment covers, stored as TEXT[]. MEASURED 284 elements over 282 rows with 2 rows carrying more than one id, so multi-order shipments occur in this account and the array must not be flattened. Joins to `tfl_orders_v1__Order.cartOrderId`
 	 */
@@ -3822,7 +4766,13 @@ export interface TflShipmentsV1Shipment {
 	updatedAt: InstantColumn;
 }
 
-export interface WmtAccountV3Profile {
+/**
+ * The Walmart seller's business identity — legal name, business registration
+ * number and country of incorporation — one row per connector.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_wmt_account_v3__profile {
 	businessRegistrationNumber: string | null;
 	/**
 	 * OURS, not from the payload: SovConnector.connectorId of the walmart_marketplace connector whose entity-match profile this is; the tenant key (a globally-unique UUIDv7, 1:1 with wsid, so wsid is not in the PK)
@@ -3842,7 +4792,16 @@ export interface WmtAccountV3Profile {
 	updatedAt: InstantColumn;
 }
 
-export interface WmtInventoryV3Wfs {
+/**
+ * Latest known Walmart WFS inventory for one SKU at one ship node, keyed
+ * (connectorId, sku, shipNodeType, shipNode). Rows are upserted in place and
+ * never deleted, so a SKU that disappears from the feed keeps its last-known
+ * quantities: compare each row's time against the connector's latest snapshot
+ * time and treat an older row as stale, not as zero.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_wmt_inventory_v3__Wfs {
 	availToSellQty: number | null;
 	/**
 	 * OURS, not from the payload: SovConnector.connectorId of the walmart_marketplace connector that took the snapshot; the tenant key
@@ -3876,7 +4835,14 @@ export interface WmtInventoryV3Wfs {
 	updatedAt: InstantColumn;
 }
 
-export interface WmtOrdersV3Order {
+/**
+ * One Walmart Marketplace order header per (connectorId, purchaseOrderId),
+ * with the full payload in doc. There is deliberately no status column:
+ * Walmart reports status only per line, on wmt_orders_v3__OrderLine.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_wmt_orders_v3__Order {
 	/**
 	 * SovConnector.connectorId of the walmart_marketplace connector that fetched this order
 	 */
@@ -3903,7 +4869,15 @@ export interface WmtOrdersV3Order {
 	updatedAt: InstantColumn;
 }
 
-export interface WmtOrdersV3OrderLine {
+/**
+ * One line of a Walmart Marketplace order, keyed (connectorId,
+ * purchaseOrderId, lineNumber). status, trackingNumber and carrierName are
+ * taken from the first order-line-status element; the full array is kept in
+ * doc, so a quantity-weighted status can be recomputed without a re-fetch.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_wmt_orders_v3__OrderLine {
 	carrierName: string | null;
 	/**
 	 * SovConnector.connectorId of the walmart_marketplace connector that fetched this line
@@ -3947,126 +4921,134 @@ export interface WmtOrdersV3OrderLine {
 	updatedAt: InstantColumn;
 }
 
+/**
+ * Every published tenant relation, keyed by its Postgres name.
+ *
+ * This is what `createDb()` parameterizes Kysely with, and what `selectFrom()`
+ * completes against. `WritableDB` is the subset a customer role is meant to be
+ * able to write.
+ */
 export interface DB {
-	amazon_ads_ad: AmazonAdsAd;
-	amazon_ads_adgroup: AmazonAdsAdgroup;
-	amazon_ads_campaign: AmazonAdsCampaign;
-	amazon_ads_target: AmazonAdsTarget;
-	amazon_browse_node: AmazonBrowseNode;
-	amazon_browse_node_attribute: AmazonBrowseNodeAttribute;
-	amazon_country: AmazonCountry;
-	amazon_fba_inventory_summary: AmazonFbaInventorySummary;
-	amazon_listing_all: AmazonListingAll;
-	amazon_listing_open: AmazonListingOpen;
-	amazon_marketplace: AmazonMarketplace;
-	amazon_merchant: AmazonMerchant;
-	amazon_orders_by_day_and_sku: AmazonOrdersByDayAndSku;
-	amazon_sales_and_traffic: AmazonSalesAndTraffic;
-	amazon_store: AmazonStore;
-	amzadapi_eligibility_v1__program: AmzadapiEligibilityV1Program;
-	amzadapi_exports_v1__ad: AmzadapiExportsV1Ad;
-	amzadapi_exports_v1__adgroup: AmzadapiExportsV1Adgroup;
-	amzadapi_exports_v1__campaign: AmzadapiExportsV1Campaign;
-	amzadapi_exports_v1__target: AmzadapiExportsV1Target;
-	amzadapi_reports_v1__product01__byDay: AmzadapiReportsV1Product01ByDay;
-	amzadapi_reports_v1__search_asin_placement__byDay: AmzadapiReportsV1SearchAsinPlacementByDay;
-	amzagg_profit__orderItem: AmzaggProfitOrderItem;
-	amzagg_profit__orderItemProjectionState: AmzaggProfitOrderItemProjectionState;
-	amzfact_ledger_build: AmzfactLedgerBuild;
-	amzfact_ledger_item: AmzfactLedgerItem;
-	amzfact_ledger_posting: AmzfactLedgerPosting;
-	amzfact_ledger_transaction: AmzfactLedgerTransaction;
-	amzms_v1__adgroups: AmzmsV1Adgroups;
-	amzms_v1__ads: AmzmsV1Ads;
-	amzms_v1__budget_usage: AmzmsV1BudgetUsage;
-	amzms_v1__campaigns: AmzmsV1Campaigns;
-	amzms_v1__sb_clickstream: AmzmsV1SbClickstream;
-	amzms_v1__sb_conversion: AmzmsV1SbConversion;
-	amzms_v1__sb_rich_media: AmzmsV1SbRichMedia;
-	amzms_v1__sb_traffic: AmzmsV1SbTraffic;
-	amzms_v1__sd_conversion: AmzmsV1SdConversion;
-	amzms_v1__sd_traffic: AmzmsV1SdTraffic;
-	amzms_v1__sp_conversion: AmzmsV1SpConversion;
-	amzms_v1__sp_traffic: AmzmsV1SpTraffic;
-	amzms_v1__targets: AmzmsV1Targets;
-	amzop_latest__byStoreAsin: AmzopLatestByStoreAsin;
-	amzreport_ALL_ORDERS: AmzreportALLORDERS;
-	amzreport_COUPON_PERFORMANCE: AmzreportCOUPONPERFORMANCE;
-	amzreport_FBA_CUSTOMER_RETURNS: AmzreportFBACUSTOMERRETURNS;
-	amzreport_FBA_FEE_PREVIEW: AmzreportFBAFEEPREVIEW;
-	amzreport_FBA_INVENTORY_PLANNING: AmzreportFBAINVENTORYPLANNING;
-	amzreport_FBA_REIMBURSEMENTS: AmzreportFBAREIMBURSEMENTS;
-	amzreport_FBA_REMOVAL_ORDER_DETAIL: AmzreportFBAREMOVALORDERDETAIL;
-	amzreport_FBA_REMOVAL_SHIPMENT_DETAIL: AmzreportFBAREMOVALSHIPMENTDETAIL;
-	amzreport_FBA_STORAGE_FEE: AmzreportFBASTORAGEFEE;
-	amzreport_LEDGER_DETAIL: AmzreportLEDGERDETAIL;
-	amzreport_LEDGER_SUMMARY: AmzreportLEDGERSUMMARY;
-	amzreport_MERCHANT_LISTINGS_ALL: AmzreportMERCHANTLISTINGSALL;
-	amzreport_OPEN_LISTINGS: AmzreportOPENLISTINGS;
-	amzreport_PROMOTION_PERFORMANCE: AmzreportPROMOTIONPERFORMANCE;
-	amzreport_SALES_AND_TRAFFIC__skuByDay: AmzreportSALESANDTRAFFICSkuByDay;
-	amzreport_SALES_AND_TRAFFIC__store: AmzreportSALESANDTRAFFICStore;
-	amzreport_SEARCH_CATALOG_PERFORMANCE: AmzreportSEARCHCATALOGPERFORMANCE;
-	amzreport_SEARCH_QUERY_PERFORMANCE: AmzreportSEARCHQUERYPERFORMANCE;
-	amzreport_SETTLEMENT_V2: AmzreportSETTLEMENTV2;
-	amzreport_SETTLEMENT_V2__summary: AmzreportSETTLEMENTV2Summary;
-	amzspapi_catalog_items_v20220401__catalogitem: AmzspapiCatalogItemsV20220401Catalogitem;
-	amzspapi_catalog_items_v20220401__itemattributes: AmzspapiCatalogItemsV20220401Itemattributes;
-	amzspapi_catalog_items_v20220401__itemattributes_lang: AmzspapiCatalogItemsV20220401ItemattributesLang;
-	amzspapi_catalog_items_v20220401__itemimages: AmzspapiCatalogItemsV20220401Itemimages;
-	amzspapi_fbaInventory_v1__InventorySummary: AmzspapiFbaInventoryV1InventorySummary;
-	amzspapi_finances_v20240619__Transaction: AmzspapiFinancesV20240619Transaction;
+	amazon_ads_ad: DbView_amazon_ads_ad;
+	amazon_ads_adgroup: DbView_amazon_ads_adgroup;
+	amazon_ads_campaign: DbView_amazon_ads_campaign;
+	amazon_ads_target: DbView_amazon_ads_target;
+	amazon_browse_node: DbTable_amazon_browse_node;
+	amazon_browse_node_attribute: DbTable_amazon_browse_node_attribute;
+	amazon_country: DbTable_amazon_country;
+	amazon_fba_inventory_summary: DbView_amazon_fba_inventory_summary;
+	amazon_listing_all: DbView_amazon_listing_all;
+	amazon_listing_open: DbView_amazon_listing_open;
+	amazon_marketplace: DbTable_amazon_marketplace;
+	amazon_merchant: DbTable_amazon_merchant;
+	amazon_orders_by_day_and_sku: DbView_amazon_orders_by_day_and_sku;
+	amazon_sales_and_traffic: DbView_amazon_sales_and_traffic;
+	amazon_store: DbTable_amazon_store;
+	amzadapi_eligibility_v1__program: DbTable_amzadapi_eligibility_v1__program;
+	amzadapi_exports_v1__ad: DbTable_amzadapi_exports_v1__ad;
+	amzadapi_exports_v1__adgroup: DbTable_amzadapi_exports_v1__adgroup;
+	amzadapi_exports_v1__campaign: DbTable_amzadapi_exports_v1__campaign;
+	amzadapi_exports_v1__target: DbTable_amzadapi_exports_v1__target;
+	amzadapi_reports_v1__product01__byDay: DbTable_amzadapi_reports_v1__product01__byDay;
+	amzadapi_reports_v1__search_asin_placement__byDay: DbTable_amzadapi_reports_v1__search_asin_placement__byDay;
+	amzagg_profit__orderItem: DbTable_amzagg_profit__orderItem;
+	amzagg_profit__orderItemProjectionState: DbTable_amzagg_profit__orderItemProjectionState;
+	amzfact_ledger_build: DbTable_amzfact_ledger_build;
+	amzfact_ledger_item: DbTable_amzfact_ledger_item;
+	amzfact_ledger_posting: DbTable_amzfact_ledger_posting;
+	amzfact_ledger_transaction: DbTable_amzfact_ledger_transaction;
+	amzms_v1__adgroups: DbTable_amzms_v1__adgroups;
+	amzms_v1__ads: DbTable_amzms_v1__ads;
+	amzms_v1__budget_usage: DbTable_amzms_v1__budget_usage;
+	amzms_v1__campaigns: DbTable_amzms_v1__campaigns;
+	amzms_v1__sb_clickstream: DbTable_amzms_v1__sb_clickstream;
+	amzms_v1__sb_conversion: DbTable_amzms_v1__sb_conversion;
+	amzms_v1__sb_rich_media: DbTable_amzms_v1__sb_rich_media;
+	amzms_v1__sb_traffic: DbTable_amzms_v1__sb_traffic;
+	amzms_v1__sd_conversion: DbTable_amzms_v1__sd_conversion;
+	amzms_v1__sd_traffic: DbTable_amzms_v1__sd_traffic;
+	amzms_v1__sp_conversion: DbTable_amzms_v1__sp_conversion;
+	amzms_v1__sp_traffic: DbTable_amzms_v1__sp_traffic;
+	amzms_v1__targets: DbTable_amzms_v1__targets;
+	amzop_latest__byStoreAsin: DbTable_amzop_latest__byStoreAsin;
+	amzreport_ALL_ORDERS: DbTable_amzreport_ALL_ORDERS;
+	amzreport_COUPON_PERFORMANCE: DbTable_amzreport_COUPON_PERFORMANCE;
+	amzreport_FBA_CUSTOMER_RETURNS: DbTable_amzreport_FBA_CUSTOMER_RETURNS;
+	amzreport_FBA_FEE_PREVIEW: DbTable_amzreport_FBA_FEE_PREVIEW;
+	amzreport_FBA_INVENTORY_PLANNING: DbTable_amzreport_FBA_INVENTORY_PLANNING;
+	amzreport_FBA_REIMBURSEMENTS: DbTable_amzreport_FBA_REIMBURSEMENTS;
+	amzreport_FBA_REMOVAL_ORDER_DETAIL: DbTable_amzreport_FBA_REMOVAL_ORDER_DETAIL;
+	amzreport_FBA_REMOVAL_SHIPMENT_DETAIL: DbTable_amzreport_FBA_REMOVAL_SHIPMENT_DETAIL;
+	amzreport_FBA_STORAGE_FEE: DbTable_amzreport_FBA_STORAGE_FEE;
+	amzreport_LEDGER_DETAIL: DbTable_amzreport_LEDGER_DETAIL;
+	amzreport_LEDGER_SUMMARY: DbTable_amzreport_LEDGER_SUMMARY;
+	amzreport_MERCHANT_LISTINGS_ALL: DbTable_amzreport_MERCHANT_LISTINGS_ALL;
+	amzreport_OPEN_LISTINGS: DbTable_amzreport_OPEN_LISTINGS;
+	amzreport_PROMOTION_PERFORMANCE: DbTable_amzreport_PROMOTION_PERFORMANCE;
+	amzreport_SALES_AND_TRAFFIC__skuByDay: DbTable_amzreport_SALES_AND_TRAFFIC__skuByDay;
+	amzreport_SALES_AND_TRAFFIC__store: DbTable_amzreport_SALES_AND_TRAFFIC__store;
+	amzreport_SEARCH_CATALOG_PERFORMANCE: DbTable_amzreport_SEARCH_CATALOG_PERFORMANCE;
+	amzreport_SEARCH_QUERY_PERFORMANCE: DbTable_amzreport_SEARCH_QUERY_PERFORMANCE;
+	amzreport_SETTLEMENT_V2: DbTable_amzreport_SETTLEMENT_V2;
+	amzreport_SETTLEMENT_V2__summary: DbTable_amzreport_SETTLEMENT_V2__summary;
+	amzspapi_catalog_items_v20220401__catalogitem: DbTable_amzspapi_catalog_items_v20220401__catalogitem;
+	amzspapi_catalog_items_v20220401__itemattributes: DbTable_amzspapi_catalog_items_v20220401__itemattributes;
+	amzspapi_catalog_items_v20220401__itemattributes_lang:
+		DbTable_amzspapi_catalog_items_v20220401__itemattributes_lang;
+	amzspapi_catalog_items_v20220401__itemimages: DbTable_amzspapi_catalog_items_v20220401__itemimages;
+	amzspapi_fbaInventory_v1__InventorySummary: DbTable_amzspapi_fbaInventory_v1__InventorySummary;
+	amzspapi_finances_v20240619__Transaction: DbTable_amzspapi_finances_v20240619__Transaction;
 	amzspapi_finances_v20240619__TransactionItemProjectionState:
-		AmzspapiFinancesV20240619TransactionItemProjectionState;
-	amzspapi_finances_v20240619__TransactionItemSummary: AmzspapiFinancesV20240619TransactionItemSummary;
-	amzspapi_orders_v0__Order: AmzspapiOrdersV0Order;
-	amzspapi_orders_v0__OrderItem: AmzspapiOrdersV0OrderItem;
-	amzspapi_searchCatalogItems_v2020__asin: AmzspapiSearchCatalogItemsV2020Asin;
-	amzspapi_searchCatalogItems_v2020__rank: AmzspapiSearchCatalogItemsV2020Rank;
-	amzspapi_searchCatalogItems_v2020__scrape: AmzspapiSearchCatalogItemsV2020Scrape;
-	amzspapi_searchCatalogItems_v2020__target: AmzspapiSearchCatalogItemsV2020Target;
-	amzspapi_sellers_v1__account: AmzspapiSellersV1Account;
-	amzspapi_sellers_v1__marketplace: AmzspapiSellersV1Marketplace;
-	amzspapi_sellers_v1__marketplaceParticipation: AmzspapiSellersV1MarketplaceParticipation;
-	amzspstream_ACCOUNT_STATUS_CHANGED: AmzspstreamACCOUNTSTATUSCHANGED;
-	amzspstream_ANY_OFFER_CHANGED: AmzspstreamANYOFFERCHANGED;
-	amzspstream_B2B_ANY_OFFER_CHANGED: AmzspstreamB2BANYOFFERCHANGED;
-	amzspstream_DETAIL_PAGE_TRAFFIC_EVENT: AmzspstreamDETAILPAGETRAFFICEVENT;
-	amzspstream_FBA_INVENTORY_AVAILABILITY_CHANGES: AmzspstreamFBAINVENTORYAVAILABILITYCHANGES;
-	amzspstream_FEE_PROMOTION: AmzspstreamFEEPROMOTION;
-	amzspstream_FEED_PROCESSING_FINISHED: AmzspstreamFEEDPROCESSINGFINISHED;
-	amzspstream_FULFILLMENT_ORDER_STATUS: AmzspstreamFULFILLMENTORDERSTATUS;
-	amzspstream_ORDER_CHANGE: AmzspstreamORDERCHANGE;
-	amzspstream_PRICING_HEALTH: AmzspstreamPRICINGHEALTH;
-	amzspstream_REPORT_PROCESSING_FINISHED: AmzspstreamREPORTPROCESSINGFINISHED;
-	brand_config_amazon_asin: BrandConfigAmazonAsin;
-	brand_config_amazon_attributes: BrandConfigAmazonAttributes;
-	brand_config_amazon_family: BrandConfigAmazonFamily;
-	brand_config_business_attributes: BrandConfigBusinessAttributes;
-	brand_config_ontology_category: BrandConfigOntologyCategory;
-	brand_config_ontology_metadata: BrandConfigOntologyMetadata;
-	brand_config_ontology_variant: BrandConfigOntologyVariant;
-	brand_ontology_amazon_asin: BrandOntologyAmazonAsin;
-	brand_ontology_amazon_family: BrandOntologyAmazonFamily;
-	brand_ontology_category: BrandOntologyCategory;
-	brand_ontology_variant: BrandOntologyVariant;
-	databrill_schema_version: DatabrillSchemaVersion;
-	fx_ecb_rate_history: FxEcbRateHistory;
-	fx_ecb_rate_latest: FxEcbRateLatest;
-	tfl_asns_v1__Asn: TflAsnsV1Asn;
-	tfl_asns_v1__AsnItem: TflAsnsV1AsnItem;
-	tfl_inventorySummary_v1__ProductWarehouse: TflInventorySummaryV1ProductWarehouse;
-	tfl_orders_v1__Order: TflOrdersV1Order;
-	tfl_orders_v1__OrderItem: TflOrdersV1OrderItem;
-	tfl_otsShipments_v1__OtsShipment: TflOtsShipmentsV1OtsShipment;
-	tfl_otsShipments_v1__OtsShipmentItem: TflOtsShipmentsV1OtsShipmentItem;
-	tfl_products_v1__Inventory: TflProductsV1Inventory;
-	tfl_products_v1__Sku: TflProductsV1Sku;
-	tfl_products_v1__SkuProduct: TflProductsV1SkuProduct;
-	tfl_products_v1__WarehouseInventory: TflProductsV1WarehouseInventory;
-	tfl_shipments_v1__Shipment: TflShipmentsV1Shipment;
-	wmt_account_v3__profile: WmtAccountV3Profile;
-	wmt_inventory_v3__Wfs: WmtInventoryV3Wfs;
-	wmt_orders_v3__Order: WmtOrdersV3Order;
-	wmt_orders_v3__OrderLine: WmtOrdersV3OrderLine;
+		DbTable_amzspapi_finances_v20240619__TransactionItemProjectionState;
+	amzspapi_finances_v20240619__TransactionItemSummary: DbTable_amzspapi_finances_v20240619__TransactionItemSummary;
+	amzspapi_orders_v0__Order: DbTable_amzspapi_orders_v0__Order;
+	amzspapi_orders_v0__OrderItem: DbTable_amzspapi_orders_v0__OrderItem;
+	amzspapi_searchCatalogItems_v2020__asin: DbTable_amzspapi_searchCatalogItems_v2020__asin;
+	amzspapi_searchCatalogItems_v2020__rank: DbTable_amzspapi_searchCatalogItems_v2020__rank;
+	amzspapi_searchCatalogItems_v2020__scrape: DbTable_amzspapi_searchCatalogItems_v2020__scrape;
+	amzspapi_searchCatalogItems_v2020__target: DbTable_amzspapi_searchCatalogItems_v2020__target;
+	amzspapi_sellers_v1__account: DbTable_amzspapi_sellers_v1__account;
+	amzspapi_sellers_v1__marketplace: DbTable_amzspapi_sellers_v1__marketplace;
+	amzspapi_sellers_v1__marketplaceParticipation: DbTable_amzspapi_sellers_v1__marketplaceParticipation;
+	amzspstream_ACCOUNT_STATUS_CHANGED: DbTable_amzspstream_ACCOUNT_STATUS_CHANGED;
+	amzspstream_ANY_OFFER_CHANGED: DbTable_amzspstream_ANY_OFFER_CHANGED;
+	amzspstream_B2B_ANY_OFFER_CHANGED: DbTable_amzspstream_B2B_ANY_OFFER_CHANGED;
+	amzspstream_DETAIL_PAGE_TRAFFIC_EVENT: DbTable_amzspstream_DETAIL_PAGE_TRAFFIC_EVENT;
+	amzspstream_FBA_INVENTORY_AVAILABILITY_CHANGES: DbTable_amzspstream_FBA_INVENTORY_AVAILABILITY_CHANGES;
+	amzspstream_FEE_PROMOTION: DbTable_amzspstream_FEE_PROMOTION;
+	amzspstream_FEED_PROCESSING_FINISHED: DbTable_amzspstream_FEED_PROCESSING_FINISHED;
+	amzspstream_FULFILLMENT_ORDER_STATUS: DbTable_amzspstream_FULFILLMENT_ORDER_STATUS;
+	amzspstream_ORDER_CHANGE: DbTable_amzspstream_ORDER_CHANGE;
+	amzspstream_PRICING_HEALTH: DbTable_amzspstream_PRICING_HEALTH;
+	amzspstream_REPORT_PROCESSING_FINISHED: DbTable_amzspstream_REPORT_PROCESSING_FINISHED;
+	brand_config_amazon_asin: DbTable_brand_config_amazon_asin;
+	brand_config_amazon_attributes: DbTable_brand_config_amazon_attributes;
+	brand_config_amazon_family: DbTable_brand_config_amazon_family;
+	brand_config_business_attributes: DbTable_brand_config_business_attributes;
+	brand_config_ontology_category: DbTable_brand_config_ontology_category;
+	brand_config_ontology_metadata: DbTable_brand_config_ontology_metadata;
+	brand_config_ontology_variant: DbTable_brand_config_ontology_variant;
+	brand_ontology_amazon_asin: DbView_brand_ontology_amazon_asin;
+	brand_ontology_amazon_family: DbView_brand_ontology_amazon_family;
+	brand_ontology_category: DbView_brand_ontology_category;
+	brand_ontology_variant: DbView_brand_ontology_variant;
+	databrill_schema_version: DbTable_databrill_schema_version;
+	fx_ecb_rate_history: DbTable_fx_ecb_rate_history;
+	fx_ecb_rate_latest: DbTable_fx_ecb_rate_latest;
+	tfl_asns_v1__Asn: DbTable_tfl_asns_v1__Asn;
+	tfl_asns_v1__AsnItem: DbTable_tfl_asns_v1__AsnItem;
+	tfl_inventorySummary_v1__ProductWarehouse: DbTable_tfl_inventorySummary_v1__ProductWarehouse;
+	tfl_orders_v1__Order: DbTable_tfl_orders_v1__Order;
+	tfl_orders_v1__OrderItem: DbTable_tfl_orders_v1__OrderItem;
+	tfl_otsShipments_v1__OtsShipment: DbTable_tfl_otsShipments_v1__OtsShipment;
+	tfl_otsShipments_v1__OtsShipmentItem: DbTable_tfl_otsShipments_v1__OtsShipmentItem;
+	tfl_products_v1__Inventory: DbTable_tfl_products_v1__Inventory;
+	tfl_products_v1__Sku: DbTable_tfl_products_v1__Sku;
+	tfl_products_v1__SkuProduct: DbTable_tfl_products_v1__SkuProduct;
+	tfl_products_v1__WarehouseInventory: DbTable_tfl_products_v1__WarehouseInventory;
+	tfl_shipments_v1__Shipment: DbTable_tfl_shipments_v1__Shipment;
+	wmt_account_v3__profile: DbTable_wmt_account_v3__profile;
+	wmt_inventory_v3__Wfs: DbTable_wmt_inventory_v3__Wfs;
+	wmt_orders_v3__Order: DbTable_wmt_orders_v3__Order;
+	wmt_orders_v3__OrderLine: DbTable_wmt_orders_v3__OrderLine;
 }

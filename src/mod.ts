@@ -29,8 +29,13 @@
  * type-level affordance — the enforceable boundary is the grants held by your
  * database role.
  *
- * Import from `@databrill/core-pg-kysely/types` instead if you only need the
- * schema types and no connection.
+ * Everything here is also reachable from two narrower entry points, for when
+ * you do not want the `pg` dependency this one carries:
+ * `@databrill/core-pg-kysely/types` is the schema types and is fully erased,
+ * and `@databrill/core-pg-kysely/contract` is the contract as runtime values —
+ * {@link SCHEMA_VERSION}, {@link SCHEMA_HASH}, {@link WRITABLE_TABLE_NAMES}.
+ *
+ * @module
  */
 
 // The exported surface is deliberately small: everything here is something a
@@ -53,6 +58,6 @@ export { requireTemporal, UnrepresentableTemporalValueError } from "./temporalVa
 
 export type * from "./db.ts";
 export type { InstantColumn, PlainDateColumn, PlainDateTimeColumn } from "./temporalColumns.ts";
-export type { WritableDB, WritableTableName } from "./writableTables.ts";
-export { WRITABLE_TABLE_NAMES } from "./writableTables.ts";
+export type { WritableDB, WritableTableName } from "./WritableDB.ts";
+export { WRITABLE_TABLE_NAMES } from "./WRITABLE_TABLE_NAMES.ts";
 export { SCHEMA_HASH, SCHEMA_VERSION } from "./schemaVersion.ts";

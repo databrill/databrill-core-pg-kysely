@@ -8,9 +8,14 @@
 //
 // A drift gate in pg-kysely-tenant/tests/integration/ fails if this file is stale.
 
-import type { DB } from "./db.ts";
-
-/** Every tenant table a customer role is intended to be able to write. */
+/**
+ * Every tenant table a customer role is intended to be able to write.
+ *
+ * The `as const` is load-bearing across a file boundary: `WritableDB.ts`
+ * derives `WritableTableName` as `typeof WRITABLE_TABLE_NAMES[number]`, and
+ * without it that widens to `string` and `WritableDB` silently becomes
+ * `Pick<DB, string>` — every table writable, with no error anywhere.
+ */
 export const WRITABLE_TABLE_NAMES = [
 	"brand_config_amazon_asin",
 	"brand_config_amazon_attributes",
@@ -20,14 +25,3 @@ export const WRITABLE_TABLE_NAMES = [
 	"brand_config_ontology_metadata",
 	"brand_config_ontology_variant",
 ] as const;
-
-/** The name of a customer-writable tenant table. */
-export type WritableTableName = typeof WRITABLE_TABLE_NAMES[number];
-
-/**
- * The write surface: the readable schema narrowed to the writable tables.
- *
- * This is a compile-time affordance, not a security boundary. The enforceable
- * boundary is the grants held by the connecting database role.
- */
-export type WritableDB = Pick<DB, WritableTableName>;

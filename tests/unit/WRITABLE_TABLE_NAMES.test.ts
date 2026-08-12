@@ -1,5 +1,5 @@
 /**
- * Unit tests for the generated writable-table surface.
+ * Unit tests for the writable-table surface.
  *
  * `WRITABLE_TABLE_NAMES` is derived from the schema DSL's per-table read/write
  * flag, and `WritableDB` is `Pick<DB, WritableTableName>` — so the subset
@@ -13,7 +13,8 @@
 
 import { assert, assertEquals } from "jsr:@std/assert@1.0.19";
 import type { DB } from "../../src/db.ts";
-import { WRITABLE_TABLE_NAMES, type WritableDB, type WritableTableName } from "../../src/writableTables.ts";
+import { WRITABLE_TABLE_NAMES } from "../../src/WRITABLE_TABLE_NAMES.ts";
+import type { WritableDB, WritableTableName } from "../../src/WritableDB.ts";
 
 Deno.test("WRITABLE_TABLE_NAMES - is non-empty", () => {
 	// An empty list would silently make every write a compile error, which

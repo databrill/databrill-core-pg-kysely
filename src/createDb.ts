@@ -5,7 +5,7 @@ import type { DB } from "./db.ts";
 import { makePgTypes } from "./pgTypeParsers.ts";
 import { temporalParameterPlugin } from "./temporalParameterPlugin.ts";
 import { requireTemporal } from "./temporalValues.ts";
-import type { WritableDB } from "./writableTables.ts";
+import type { WritableDB } from "./WritableDB.ts";
 
 /**
  * Options for {@link createDb}. Everything `pg`'s `Pool` accepts, minus `types`,

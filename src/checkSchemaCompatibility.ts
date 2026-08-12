@@ -15,7 +15,15 @@ import { SCHEMA_VERSION } from "./schemaVersion.ts";
  */
 export type SchemaCompatibilityLevel = "ok" | "warning" | "error" | "unknown";
 
+/**
+ * The verdict of a schema compatibility check, as returned by
+ * {@link checkSchemaCompatibility}.
+ *
+ * Both versions are reported alongside the verdict, not just the verdict, so a
+ * caller that decides to continue anyway can log what it continued against.
+ */
 export interface SchemaCompatibility {
+	/** How serious the mismatch is, if there is one. */
 	readonly level: SchemaCompatibilityLevel;
 	/** The contract this installed package was generated against. */
 	readonly packageVersion: string;

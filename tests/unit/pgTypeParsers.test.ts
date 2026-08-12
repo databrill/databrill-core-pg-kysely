@@ -16,7 +16,7 @@ import pg from "pg";
 import { makePgTypes, pgTypeParsers } from "../../src/pgTypeParsers.ts";
 import { temporalParameterPlugin } from "../../src/temporalParameterPlugin.ts";
 import type { DB } from "../../src/db.ts";
-import type { WritableDB } from "../../src/writableTables.ts";
+import type { WritableDB } from "../../src/WritableDB.ts";
 
 /** `date`, `timestamp without time zone`, `timestamp with time zone`. */
 const OID_DATE = 1082;

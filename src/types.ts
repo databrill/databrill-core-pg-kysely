@@ -1,14 +1,19 @@
 /**
- * Types-only entry point: `@databrill/core-pg-kysely/types`.
+ * Types entry point: `@databrill/core-pg-kysely/types`.
  *
- * Everything the schema contract consists of, with no runtime dependency on
- * `pg` or on a live connection. Import from here when you are typing rows,
- * writing helpers over the schema, or building your own Kysely instance; import
- * from the package root when you also want {@link createDb}.
+ * Type-only, and literally so: every export here is erased, so importing this
+ * module emits no JavaScript and pulls in no dependency — not `pg`, not
+ * `kysely`, nothing. Import from here when you are typing rows, writing helpers
+ * over the schema, or building your own Kysely instance.
+ *
+ * For the contract as runtime values — `SCHEMA_VERSION`, `SCHEMA_HASH`,
+ * `WRITABLE_TABLE_NAMES` — import `@databrill/core-pg-kysely/contract`, which
+ * is also free of `pg`. For a connection, import the package root, which is
+ * where {@link createDb} and its driver dependencies live.
+ *
+ * @module
  */
 
 export type * from "./db.ts";
 export type { InstantColumn, PlainDateColumn, PlainDateTimeColumn } from "./temporalColumns.ts";
-export type { WritableDB, WritableTableName } from "./writableTables.ts";
-export { WRITABLE_TABLE_NAMES } from "./writableTables.ts";
-export { SCHEMA_HASH, SCHEMA_VERSION } from "./schemaVersion.ts";
+export type { WritableDB, WritableTableName } from "./WritableDB.ts";

@@ -54,9 +54,49 @@ const listings = await db
 await destroy();
 ```
 
-If you only need the schema types, with no `pg` or connection dependency
-at all, import from `@databrill/core-pg-kysely/types` instead — useful for
-typing rows or building your own Kysely instance.
+## Three entry points
+
+Which one you import decides what you pay for:
+
+- `@databrill/core-pg-kysely` — everything, including `createDb()`. Pulls in
+  `pg` and its dependency tree, because it opens connections.
+- `@databrill/core-pg-kysely/types` — the schema types. Type-only and
+  literally erased: importing it emits no JavaScript and pulls in no
+  dependency at all. Use it for typing rows, writing helpers over the schema,
+  or building your own Kysely instance.
+- `@databrill/core-pg-kysely/contract` — the contract as runtime values:
+  `SCHEMA_VERSION`, `SCHEMA_HASH` and `WRITABLE_TABLE_NAMES`. Also free of
+  `pg`, so checking which schema version you were built against does not cost
+  a database driver.
+
+```ts
+import { SCHEMA_VERSION, WRITABLE_TABLE_NAMES } from "@databrill/core-pg-kysely/contract";
+```
+
+All three are re-exported from the package root, so importing everything from
+`@databrill/core-pg-kysely` is always correct — the split exists only so you
+can avoid the driver when you do not need it.
+
+## Type names
+
+A relation's row type is named after the relation, prefixed by what it is:
+`DbTable_amazon_country`, `DbView_amazon_listing_open`. The physical name is
+kept verbatim, including the double underscores and casing Amazon's API
+naming produces — `DbTable_wmt_orders_v3__Order`, not a PascalCase rewrite of
+it. So the type for any table you can name in `selectFrom()` is that name
+with a prefix, and nothing has to be looked up.
+
+Remember that a selected row is `Selectable<DbTable_x>`, not `DbTable_x`
+itself: the interface describes a column's select, insert and update types
+together, which is what lets `Generated<T>` columns be required on read and
+optional on write.
+
+```ts
+import type { Selectable } from "kysely";
+import type { DbView_amazon_listing_open } from "@databrill/core-pg-kysely/types";
+
+type OpenListing = Selectable<DbView_amazon_listing_open>;
+```
 
 ## Read and write
 
