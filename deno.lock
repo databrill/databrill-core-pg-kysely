@@ -6,7 +6,7 @@
     "jsr:@std/yaml@1": "1.1.2",
     "npm:@types/pg@^8.15.0": "8.20.0",
     "npm:kysely@0.29": "0.29.4",
-    "npm:pg@^8.16.0": "8.23.0"
+    "npm:pg@^8.16.3": "8.23.0"
   },
   "jsr": {
     "@std/assert@1.0.19": {
@@ -116,7 +116,7 @@
     "dependencies": [
       "npm:@types/pg@^8.15.0",
       "npm:kysely@0.29",
-      "npm:pg@^8.16.0"
+      "npm:pg@^8.16.3"
     ]
   }
 }

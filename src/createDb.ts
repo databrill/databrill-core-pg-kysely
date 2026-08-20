@@ -1,6 +1,6 @@
 import { Kysely, PostgresDialect } from "kysely";
 import type { ReadonlyKysely } from "kysely/readonly";
-import pg from "pg";
+import { Pool, type PoolConfig } from "pg";
 import type { DB } from "./db.ts";
 import { makePgTypes } from "./pgTypeParsers.ts";
 import { temporalParameterPlugin } from "./temporalParameterPlugin.ts";
@@ -12,7 +12,7 @@ import type { WritableDB } from "./WritableDB.ts";
  * which this package owns — see {@link makePgTypes} for why overriding it would
  * make the published types wrong.
  */
-export interface CreateDbOptions extends Omit<pg.PoolConfig, "types"> {
+export interface CreateDbOptions extends Omit<PoolConfig, "types"> {
 	/**
 	 * The Postgres schema holding the tenant tables.
 	 *
@@ -37,7 +37,7 @@ export interface TenantDb {
 	/**
 	 * Every published table and view, read-only.
 	 *
-	 * Mutations and DDL are compile-time type errors. This is an affordance for
+	 * Mutations and DDL are compile-time type errors. This is a convenience for
 	 * callers, NOT a security boundary — the enforceable boundary is the grants
 	 * held by the role in the connection string. Treat a compile error here as a
 	 * hint that you meant to use {@link TenantDb.write}, never as proof that a
@@ -61,7 +61,7 @@ export interface TenantDb {
 	 * cannot express. Do not call `end()` on it directly; use
 	 * {@link TenantDb.destroy}.
 	 */
-	readonly pool: pg.Pool;
+	readonly pool: Pool;
 
 	/**
 	 * Close the shared pool. Idempotent, and invalidates BOTH surfaces — there is
@@ -76,7 +76,7 @@ export interface TenantDb {
  * ```ts
  * const { db, write, destroy } = createDb({
  * 	connectionString: process.env.DATABRILL_DATABASE_URL,
- * 	schema: "w100000660",
+ * 	schema: "w123456789",
  * });
  *
  * const rows = await db.selectFrom("amazon_listing_open").selectAll().execute();
@@ -99,11 +99,11 @@ export function createDb(options: string | CreateDbOptions): TenantDb {
 	if (schema !== undefined && !isPlainIdentifier(schema)) {
 		throw new Error(
 			`Invalid schema name ${JSON.stringify(schema)}: expected a plain Postgres identifier ` +
-				`such as "public" or "w100000660".`,
+				`such as "public" or "w123456789".`,
 		);
 	}
 
-	const pool = new pg.Pool({ ...poolConfig, types: makePgTypes() });
+	const pool = new Pool({ ...poolConfig, types: makePgTypes() });
 
 	// `pg-pool` emits `'error'` on the POOL when an idle client fails — a
 	// database restart, a pooler recycling a backend, someone running
@@ -163,7 +163,7 @@ export function createDb(options: string | CreateDbOptions): TenantDb {
 /**
  * Schema names reach Kysely's identifier quoting, not a parameter, so anything
  * that is not a plain identifier is rejected rather than escaped. Callers pass
- * workspace-derived names like `w100000660`; nothing legitimate needs more.
+ * workspace-derived names like `w123456789`; nothing legitimate needs more.
  */
 function isPlainIdentifier(value: string): boolean {
 	return /^[A-Za-z_][A-Za-z0-9_$]*$/.test(value);

@@ -1,28 +1,29 @@
 {
 	"name": "@databrill/core-pg-kysely",
-	"version": "0.1.2",
+	"version": "0.1.3",
 	"description": "Typed access to a Databrill tenant database: the tenant schema as a versioned Kysely DB interface, plus a connection factory whose driver configuration makes those types true at runtime.",
 	"license": "Apache-2.0",
 	"tasks": {
-		"check": "deno check",
+		"check": "deno check --quiet",
 		"ci": "deno task static:ci && deno task test:unit",
 		"fmt:check": "deno fmt --check",
 		"fmt": "deno fmt",
 		"lint": "deno lint",
 		"publish:dry": "deno publish --dry-run --allow-dirty",
-		"static:ci": "deno --quiet task fmt:check && deno task check && deno task lint",
-		"static": "deno --quiet fmt && deno task check && deno task lint",
-		"test:unit": "deno test --allow-read=. tests/unit"
+		"static:ci": "deno --quiet task fmt:check && deno --quiet task check && deno --quiet task lint",
+		"static": "deno --quiet fmt && deno --quiet task check && deno --quiet task lint",
+		"test:unit": "deno run --allow-run=deno ../scripts/runDenoTest.ts --allow-read=. tests/unit"
 	},
 	"exports": {
 		".": "./src/mod.ts",
 		"./types": "./src/types.ts",
-		"./contract": "./src/contract.ts"
+		"./contract": "./src/contract.ts",
+		"./canonical": "./src/canonical/mod.ts"
 	},
 	"imports": {
 		"kysely": "npm:kysely@^0.29.0",
 		"kysely/": "npm:/kysely@^0.29.0/",
-		"pg": "npm:pg@^8.16.0",
+		"pg": "npm:pg@^8.16.3",
 		"@types/pg": "npm:@types/pg@^8.15.0"
 	},
 	"publish": {

@@ -10,6 +10,7 @@
 
 import { assert, assertEquals, assertThrows } from "jsr:@std/assert@1.0.19";
 import { createDb } from "../../src/createDb.ts";
+import { TESTING_tenantSchema1 } from "../testConstants.ts";
 
 /** Never connected to; the pool stays idle until a query asks for a client. */
 const UNUSED_URL = "postgresql://unused:unused@127.0.0.1:1/unused";
@@ -72,11 +73,11 @@ Deno.test("createDb - a schema name that is not a plain identifier is rejected",
 });
 
 Deno.test("createDb - ordinary schema names are accepted and qualify the SQL", async () => {
-	const tenant = createDb({ connectionString: UNUSED_URL, schema: "w100000660" });
+	const tenant = createDb({ connectionString: UNUSED_URL, schema: TESTING_tenantSchema1 });
 	try {
 		const compiled = tenant.db.selectFrom("databrill_schema_version").select("version").compile();
 		assert(
-			compiled.sql.includes('"w100000660"."databrill_schema_version"'),
+			compiled.sql.includes(`"${TESTING_tenantSchema1}"."databrill_schema_version"`),
 			`the schema must be qualified in the emitted SQL, got: ${compiled.sql}`,
 		);
 	} finally {

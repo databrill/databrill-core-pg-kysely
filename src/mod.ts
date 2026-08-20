@@ -7,7 +7,7 @@
  *
  * const { db, write, destroy } = createDb({
  * 	connectionString: Deno.env.get("DATABRILL_DATABASE_URL"),
- * 	schema: "w100000660",
+ * 	schema: "w123456789",
  * });
  *
  * const compatibility = await checkSchemaCompatibility(db);
@@ -26,14 +26,8 @@
  *
  * `db` covers every published table and view and rejects writes at compile
  * time; `write` covers the tables customers are meant to write. That split is a
- * type-level affordance — the enforceable boundary is the grants held by your
+ * type-level check — the enforceable boundary is the grants held by your
  * database role.
- *
- * Everything here is also reachable from two narrower entry points, for when
- * you do not want the `pg` dependency this one carries:
- * `@databrill/core-pg-kysely/types` is the schema types and is fully erased,
- * and `@databrill/core-pg-kysely/contract` is the contract as runtime values —
- * {@link SCHEMA_VERSION}, {@link SCHEMA_HASH}, {@link WRITABLE_TABLE_NAMES}.
  *
  * @module
  */

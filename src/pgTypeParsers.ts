@@ -1,9 +1,9 @@
-import pg from "pg";
-import { parseInstant, parsePlainDate, parsePlainDateTime } from "./temporalValues.ts";
+import { types } from "pg";
+import { temporalOidParsers } from "./temporalOidParsers.ts";
 
 /**
  * Driver-level type parsers that make this package's published types TRUE at
- * runtime.
+ * runtime, for the `pg` driver `createDb()` uses.
  *
  * Without them the types lie. `pg` parses `date`, `timestamp` and `timestamptz`
  * into JavaScript `Date` objects by default, while the generated interfaces
@@ -12,38 +12,21 @@ import { parseInstant, parsePlainDate, parsePlainDateTime } from "./temporalValu
  * `createDb()` exists rather than a README paragraph telling customers to build
  * their own pool.
  *
- * Only the date/time OIDs are overridden. `numeric` and `int8` already come
- * back as strings from `pg`, which is exactly what the generated types say, so
- * registering a parser for them would be motion without effect. Array OIDs are
- * not overridden either: the published schema contains no timestamp arrays (the
- * only array column is `bigint[]`, which `pg` yields as strings). If a
- * timestamp array column is ever published, OIDs 1115, 1182 and 1185 must be
- * added here — and the round-trip integration test is what will catch it.
+ * The OID→parser table itself is in `./temporalOidParsers.ts`, which imports no
+ * driver, because the canonical readers configure postgres.js from the same
+ * table. Which OIDs are covered, and why the list stops where it does, is
+ * documented there.
  */
-
-/** `date` → `Temporal.PlainDate`. */
-const OID_DATE = 1082;
-
-/** `timestamp without time zone` → `Temporal.PlainDateTime`, with no offset invented. */
-const OID_TIMESTAMP = 1114;
-
-/** `timestamp with time zone` → `Temporal.Instant`. */
-const OID_TIMESTAMPTZ = 1184;
 
 /**
  * The parsers, by Postgres type OID.
  *
- * Exported so a customer who builds their own dialect can make their runtime
- * agree with the types they are importing. Using raw `pg` without them yields
- * `Date` objects, at which point the published types are wrong.
+ * Re-exported under this package's published name. Using raw `pg` without them
+ * yields `Date` objects, at which point the published types are wrong.
  */
 export const pgTypeParsers: Readonly<
 	Record<number, (value: string) => Temporal.Instant | Temporal.PlainDateTime | Temporal.PlainDate>
-> = {
-	[OID_DATE]: parsePlainDate,
-	[OID_TIMESTAMP]: parsePlainDateTime,
-	[OID_TIMESTAMPTZ]: parseInstant,
-};
+> = temporalOidParsers;
 
 /**
  * Build the object to hand to a `pg` `Pool` as its `types` option.
@@ -53,7 +36,7 @@ export const pgTypeParsers: Readonly<
  * nothing about. Overriding `getTypeParser` on one pool's config affects only
  * that pool, and delegates every other OID to `pg`'s own defaults.
  */
-export function makePgTypes(): { readonly getTypeParser: typeof pg.types.getTypeParser } {
+export function makePgTypes(): { readonly getTypeParser: typeof types.getTypeParser } {
 	return { getTypeParser };
 }
 
@@ -70,5 +53,5 @@ function getTypeParser(oid: number, format?: "text" | "binary"): unknown {
 	if (parser !== undefined) {
 		return parser;
 	}
-	return pg.types.getTypeParser(oid, format);
+	return types.getTypeParser(oid, format);
 }

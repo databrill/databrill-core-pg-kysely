@@ -3358,7 +3358,7 @@ export interface DbTable_amzspstream_DETAIL_PAGE_TRAFFIC_EVENT {
 	 */
 	glanceViews: number;
 	/**
-	 * Deterministic UUIDv7 keyed on (notificationId, asin, startTime, endTime) (primary key)
+	 * Deterministic UUIDv7 keyed on (notificationId, marketplaceId, asin, startTime) (primary key)
 	 */
 	id: string;
 	/**

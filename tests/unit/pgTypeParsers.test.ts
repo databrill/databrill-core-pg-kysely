@@ -12,7 +12,7 @@
 
 import { assert, assertEquals } from "jsr:@std/assert@1.0.19";
 import { Kysely, PostgresDialect, sql } from "kysely";
-import pg from "pg";
+import { Pool, types as pgTypes } from "pg";
 import { makePgTypes, pgTypeParsers } from "../../src/pgTypeParsers.ts";
 import { temporalParameterPlugin } from "../../src/temporalParameterPlugin.ts";
 import type { DB } from "../../src/db.ts";
@@ -47,23 +47,23 @@ Deno.test("makePgTypes - overrides the date/time OIDs and delegates everything e
 	assertEquals(types.getTypeParser(OID_DATE), pgTypeParsers[OID_DATE]);
 
 	// 23 is int4. Whatever pg does with it, we must do the identical thing.
-	assertEquals(types.getTypeParser(23), pg.types.getTypeParser(23));
+	assertEquals(types.getTypeParser(23), pgTypes.getTypeParser(23));
 });
 
 Deno.test("makePgTypes - does not mutate pg's global parser registry", () => {
 	// The whole point of configuring `types` per-Pool is that another pool in
 	// the same process is unaffected. If this ever regresses, a customer's
 	// unrelated pool starts returning Temporal values it never asked for.
-	const before = pg.types.getTypeParser(OID_TIMESTAMPTZ);
+	const before = pgTypes.getTypeParser(OID_TIMESTAMPTZ);
 	makePgTypes();
-	assertEquals(pg.types.getTypeParser(OID_TIMESTAMPTZ), before);
-	assert(pg.types.getTypeParser(OID_TIMESTAMPTZ) !== pgTypeParsers[OID_TIMESTAMPTZ]);
+	assertEquals(pgTypes.getTypeParser(OID_TIMESTAMPTZ), before);
+	assert(pgTypes.getTypeParser(OID_TIMESTAMPTZ) !== pgTypeParsers[OID_TIMESTAMPTZ]);
 });
 
 /** A Kysely instance that compiles SQL without ever opening a connection. */
 function compileOnlyDb(): Kysely<DB> {
 	return new Kysely<DB>({
-		dialect: new PostgresDialect({ pool: new pg.Pool({ connectionString: "postgres://unused/unused" }) }),
+		dialect: new PostgresDialect({ pool: new Pool({ connectionString: "postgres://unused/unused" }) }),
 		plugins: [temporalParameterPlugin],
 	});
 }
@@ -71,7 +71,7 @@ function compileOnlyDb(): Kysely<DB> {
 /** The same, over the customer-writable subset, for exercising the write path. */
 function compileOnlyWritableDb(): Kysely<WritableDB> {
 	return new Kysely<WritableDB>({
-		dialect: new PostgresDialect({ pool: new pg.Pool({ connectionString: "postgres://unused/unused" }) }),
+		dialect: new PostgresDialect({ pool: new Pool({ connectionString: "postgres://unused/unused" }) }),
 		plugins: [temporalParameterPlugin],
 	});
 }

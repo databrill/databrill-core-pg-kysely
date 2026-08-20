@@ -7,7 +7,7 @@ export type WritableTableName = typeof WRITABLE_TABLE_NAMES[number];
 /**
  * The write surface: the readable schema narrowed to the writable tables.
  *
- * This is a compile-time affordance, not a security boundary. The enforceable
+ * This is a compile-time check, not a security boundary. The enforceable
  * boundary is the grants held by the connecting database role.
  *
  * `Pick<DB, WritableTableName>` is also the subset guarantee: a writable table

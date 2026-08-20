@@ -1,5 +1,10 @@
 # @databrill/core-pg-kysely
 
+[![JSR](https://jsr.io/badges/@databrill/core-pg-kysely)](https://jsr.io/@databrill/core-pg-kysely)
+[![JSR score](https://jsr.io/badges/@databrill/core-pg-kysely/score)](https://jsr.io/@databrill/core-pg-kysely)
+[![CI](https://github.com/databrill/databrill-core-pg-kysely/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/databrill/databrill-core-pg-kysely/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/databrill/databrill-core-pg-kysely/blob/main/LICENSE)
+
 Typed access to a Databrill tenant database: your tenant schema as a
 versioned Kysely `DB` interface, plus a connection factory whose driver
 configuration makes those types true at runtime.
@@ -37,7 +42,7 @@ import { checkSchemaCompatibility, createDb } from "@databrill/core-pg-kysely";
 
 const { db, write, destroy } = createDb({
 	connectionString: Deno.env.get("DATABRILL_DATABASE_URL"),
-	schema: "w100000660",
+	schema: "w123456789",
 });
 
 const compatibility = await checkSchemaCompatibility(db);
@@ -114,11 +119,41 @@ type OpenListing = Selectable<DbView_amazon_listing_open>;
   - `brand_config_ontology_metadata`
   - `brand_config_ontology_variant`
 
-This split is a compile-time affordance, nothing more. The enforceable
+This split is a compile-time check, nothing more. The enforceable
 boundary is the grants held by the database role in your connection
 string. A compile error from `db` is a hint that you meant `write`, never
 proof that a write could not happen — do not treat the types as a
 security control.
+
+## Your connection string
+
+`DATABRILL_DATABASE_URL` is a Postgres URI for one of two database roles
+your workspace has, and which one you were given decides what the
+connection can do:
+
+- `w{wsid}_ro` — reads every table and view in your workspace schema and
+  writes nothing.
+- `w{wsid}_rw` — the same reads, plus `INSERT`, `UPDATE` and `DELETE` on
+  exactly the tables listed under "Read and write" above. It never has
+  `TRUNCATE`, and it cannot write anything else, including the tables the
+  Databrill pipeline populates.
+
+So `db` and `write` line up with the `_rw` role's real privileges. On a
+`_ro` credential, `write` still type-checks and the database refuses the
+statement — the types are a compile-time check, the grants are the
+boundary.
+
+Ask for whichever role you need; a single workspace can hand out both.
+Databrill issues these one workspace and one role at a time, deliberately,
+and the credential is meant to live in your environment or secret store
+rather than in a repository.
+
+One property to plan around: these passwords are derived rather than
+stored, so there is no per-workspace rotation. If a credential has to be
+invalidated, Databrill rotates the master secret and reprovisions every
+role on every database, which changes every workspace's password at once.
+Treat the URI as a long-lived secret and tell us promptly if it is
+exposed, so the rotation can be scheduled rather than emergency-run.
 
 ## Runtime requirements
 
@@ -194,7 +229,7 @@ type-checks and then hands back the wrong runtime shape.
 
 ## The `schema` option
 
-`createDb({ schema, ... })` targets a Postgres schema — `w100000660` for a
+`createDb({ schema, ... })` targets a Postgres schema — `w123456789` for a
 hosted workspace, typically `public` for a bring-your-own Supabase
 project. It is applied through Kysely's own `withSchema()`, which
 qualifies identifiers in the SQL Kysely emits, not through a driver-level
