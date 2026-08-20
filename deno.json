@@ -12,7 +12,7 @@
 		"publish:dry": "deno publish --dry-run --allow-dirty",
 		"static:ci": "deno --quiet task fmt:check && deno --quiet task check && deno --quiet task lint",
 		"static": "deno --quiet fmt && deno --quiet task check && deno --quiet task lint",
-		"test:unit": "deno run --allow-run=deno ../scripts/runDenoTest.ts --allow-read=. tests/unit"
+		"test:unit": "deno test --allow-read=. tests/unit"
 	},
 	"exports": {
 		".": "./src/mod.ts",
