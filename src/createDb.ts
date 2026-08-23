@@ -90,8 +90,8 @@ export interface TenantDb {
  * `PostgresDialect`, which never names prepared statements and is therefore
  * safe against a transaction-mode pooler with no extra configuration.
  *
- * Requires a runtime with `Temporal` — native in Deno and Node 26+, a polyfill
- * away on Node 24 and Bun. This throws immediately if it is missing.
+ * Requires `Temporal`, from the runtime itself or from
+ * `temporal-polyfill/global`. This throws immediately if it is missing.
  */
 export function createDb(options: string | CreateDbOptions): TenantDb {
 	requireTemporal();

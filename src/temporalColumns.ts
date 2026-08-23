@@ -13,8 +13,8 @@ import type { ColumnType } from "kysely";
  * unambiguous, and `temporalParameterPlugin` renders the Temporal case before it
  * reaches the driver. Reads are always Temporal.
  *
- * `Temporal` is a global — native in Deno and Node 26+, a `temporal-polyfill`
- * import away on Node 24 and Bun. The TYPE declarations are a separate matter:
+ * `Temporal` is a global — built in to newer runtimes, a `temporal-polyfill`
+ * import away on the rest. The TYPE declarations are a separate matter:
  * Deno has them by default and TypeScript 7+ exposes them as the
  * `esnext.temporal` lib, but TypeScript 5.x and 6.x have no such lib, and there
  * the `temporal-polyfill/global` import is what supplies them.

@@ -132,7 +132,10 @@ export async function readAmazonReportSalesAndTraffic(
 
 	// Relations first: a missing one is an answer, not an exception.
 	const needed = AMAZON_REPORT_SALES_AND_TRAFFIC.sources
-		.filter((candidate) => candidate.requiredByLevels.includes(request.level))
+		.filter((candidate) =>
+			candidate.requiredByLevels.includes(request.level) ||
+			(candidate.key === "familyOntology" && (request.families ?? []).length > 0)
+		)
 		.map((candidate) => candidate.relation);
 	const present = await probeRelations(db, runner, needed);
 	const missing = needed.filter((relation) => !present.has(relation));
@@ -504,13 +507,14 @@ function currencyExpression(): RawBuilder<unknown> {
  * last month, and dropping it would silently change history.
  */
 function skuByDayQuery(db: Kysely<DB>, params: LevelQueryParams) {
+	const needsFamily = params.request.level === "FAMILY" || (params.request.families ?? []).length > 0;
 	const base = db
 		.selectFrom("amzreport_SALES_AND_TRAFFIC__skuByDay as t")
 		.innerJoin("amazon_store as s", (join) =>
 			join
 				.onRef("s.merchantId", "=", "t.merchantId")
 				.onRef("s.marketplaceId", "=", "t.marketplaceId"))
-		.leftJoin("brand_config_amazon_asin as f", "f.asin", "t.childAsin")
+		.$if(needsFamily, (qb) => qb.leftJoin("brand_config_amazon_asin as f", "f.asin", "t.childAsin"))
 		.where("s.isReal", "=", true)
 		.where(dateBetween(params.window))
 		.$if(params.stores.length > 0, (qb) => qb.where(storePairs(params.stores, "t.merchantId", "t.marketplaceId")))

@@ -14,10 +14,10 @@
  * the hours-only offset both — so there is no normalization step here, only
  * parsing and error framing.
  *
- * Runtime requirement: `Temporal` must exist. It is native in Deno and in
- * Node 26+. On Node 24 and Bun it is not, and the caller must load a polyfill
+ * Runtime requirement: `Temporal` must exist. Newer runtimes have it built in;
+ * on one that does not, the caller loads a polyfill
  * (`import "temporal-polyfill/global"`) before connecting. {@link requireTemporal}
- * turns that into one clear error at connection time rather than a
+ * turns a missing one into a clear error at connection time rather than a
  * `ReferenceError` on the first row read.
  */
 
@@ -132,10 +132,9 @@ export function requireTemporal(): void {
 	if (!("Temporal" in globalThis)) {
 		throw new Error(
 			"@databrill/core-pg-kysely returns Temporal values, but this runtime has no Temporal global. " +
-				"Temporal is built in to Deno and to Node 26+. On Node 24 or Bun, load a polyfill before " +
-				'connecting: import "temporal-polyfill/global". For the TYPES, TypeScript 7+ has ' +
-				'"esnext.temporal" for its `lib`; on TypeScript 5.x or 6.x that lib does not exist and ' +
-				"the same polyfill import supplies the declarations.",
+				'Load a polyfill before connecting: import "temporal-polyfill/global". For the TYPES, ' +
+				'TypeScript 7+ has "esnext.temporal" for its `lib`; on TypeScript 5.x or 6.x that lib ' +
+				"does not exist and the same polyfill import supplies the declarations.",
 		);
 	}
 }

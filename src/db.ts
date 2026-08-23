@@ -4022,6 +4022,1085 @@ export interface DbTable_fx_ecb_rate_latest {
 }
 
 /**
+ * One Shopify Customer per (shopId, id), where id is the customer's
+ * legacyResourceId. Loaded once in full and then swept incrementally by
+ * updatedAt; UPSERT-ONLY, so no sweep ever deletes a customer. Lifetime spend
+ * is an exact decimal string in NUMERIC with its own currency code beside it.
+ * This is a table of PEOPLE: name, email, phone and every address stay in doc
+ * and are never promoted to columns.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_shopify_customers_v1__Customer {
+	/**
+	 * `Customer.amountSpent.amount`, lifetime spend; the bag is `MoneyV2!` and measured 100%. NOT reconcilable against a sum of this customer's order totals: the orders corpus carries AUD on 188 of 50,085 rows while every `amountSpent` here is USD, so the two are in different currencies with no conversion Shopify shows us. Store it, do not derive from it
+	 */
+	amountSpentAmount: Numeric;
+	/**
+	 * `Customer.amountSpent.currencyCode`. The denomination of the column above and of nothing else. `MoneyV2` carries its OWN code, so the shop-currency substitution `shopify_products_v1__ProductVariant` uses for the scalar `Money` has no place here and must not be introduced. Measured USD on all 38,789 rows — a single value today, not a guarantee
+	 */
+	amountSpentCurrency: string;
+	/**
+	 * OUR row bookkeeping: when this row was first written. Not a Shopify field
+	 */
+	createdAt: InstantColumn;
+	/**
+	 * `Customer.defaultAddress.city`; measured 89.30% filled. The address itself is nullable (measured 90.42%). Geography only — the rest of the address stays in `doc`
+	 */
+	defaultCity: string | null;
+	/**
+	 * `Customer.defaultAddress.countryCodeV2`; measured 89.87% filled, 67 distinct values
+	 */
+	defaultCountryCodeV2: string | null;
+	/**
+	 * `Customer.defaultAddress.provinceCode`; measured 88.96% filled, 140 distinct values
+	 */
+	defaultProvinceCode: string | null;
+	/**
+	 * The verbatim validated Customer node from the bulk JSONL, persisted as JSONB. Holds every identifying field — `email`, `phone`, `firstName`, `lastName`, `displayName`, `note`, `tags`, the full `defaultAddress` and the whole `addresses` array — and everything else the pinned query returns but does not promote, which is what makes a later promotion possible without a re-fetch. Typed `Unknown` because no vendored Shopify type exists to pin a struct against. Never logged
+	 */
+	doc: Json;
+	/**
+	 * `Customer.legacyResourceId`, the REST Admin API id that appears in the merchant's admin URLs; `UnsignedInt64!` and measured 38,789/38,789. THE KEY: the full GID is `gid://shopify/Customer/<this>` and is not stored, because nothing here rebuilds one. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 */
+	id: Int8;
+	/**
+	 * The last order's numeric id, parsed out of `Customer.lastOrder.id`, and the join key into `shopify_orders_v1__Order.id`. `Order` is nullable and measured 68.78% filled (26,679 of 38,789). Its null EXACTLY agrees with `numberOfOrders = 0` on all 12,110 such rows, with zero disagreements either way. No declared foreign key
+	 */
+	lastOrderId: Int8 | null;
+	/**
+	 * `Customer.numberOfOrders`; `UnsignedInt64!` on the wire (a STRING, like every UnsignedInt64) and measured 38,789/38,789 with 48 distinct values and a maximum of 73. Stored as INTEGER because the measured range is nowhere near needing more, and the decoder REFUSES a value that would not fit rather than silently truncating it. THIS is the field that answers 'has this customer ever ordered' — not the lifetime spend, which is 0.00 on 352 customers that do have orders
+	 */
+	numberOfOrders: number;
+	/**
+	 * The Shopify shop id this row came from — see `shopify_products_v1__Product.ts`. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 */
+	shopId: Int8;
+	/**
+	 * SOURCE instant: `Customer.createdAt`; `DateTime!`, measured 38,789/38,789. Prefixed `shopify` so it cannot be confused with our own `createdAt` bookkeeping column
+	 */
+	shopifyCreatedAt: InstantColumn;
+	/**
+	 * SOURCE instant: `Customer.updatedAt`; `DateTime!`, measured 38,789/38,789. This is the field the incremental sweep filters on, but it is NOT the durable watermark: Shopify returns it TRUNCATED TO THE SECOND, so treating a returned value as an exact instant loses up to a second of rows. The watermark lives in `op_shopify_bulk_v1__watermark` with an explicit overlap
+	 */
+	shopifyUpdatedAt: InstantColumn;
+	/**
+	 * `Customer.state`; `CustomerState!`, measured 38,789/38,789 with 3 distinct values (ENABLED, DISABLED, INVITED). Schema.String and NOT Schema.Literal: the enum declares more members than appear here and Shopify may add one in any quarterly version, which a Literal would turn into an ingest failure on a row we could otherwise have stored
+	 */
+	state: string;
+	/**
+	 * `Customer.taxExempt`; `Boolean!`, measured 38,789/38,789 and `false` on EVERY ROW. It is a real field and is stored, but nothing on this store exercises the true branch, so any logic keyed on it ships untested here
+	 */
+	taxExempt: boolean;
+	/**
+	 * OUR row bookkeeping: when this row was last written by a sweep. NOT a refresh marker — nothing in this table is ever deleted for being stamped earlier, because an incremental sweep returns only what changed. Not a Shopify field
+	 */
+	updatedAt: InstantColumn;
+	/**
+	 * `Customer.verifiedEmail`; `Boolean!`, measured 38,789/38,789 with both values present
+	 */
+	verifiedEmail: boolean;
+}
+
+/**
+ * One Shopify discount per (shopId, id), where id is a DiscountCodeNode or
+ * DiscountAutomaticNode GID. `discount` is a union of eight member types and
+ * `discountType` is the discriminator; only the eleven fields every member
+ * declares are NOT NULL. Read as a whole set on every run with no watermark;
+ * fetchedAt marks which rows the latest successful run returned and older rows
+ * are deleted.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_shopify_discounts_v1__Discount {
+	/**
+	 * `discount.appDiscountType.appKey`; the app that owns the function. Measured on 8 of 169
+	 */
+	appDiscountTypeAppKey: string | null;
+	/**
+	 * `discount.appDiscountType.functionId`; measured on 8 of 169
+	 */
+	appDiscountTypeFunctionId: string | null;
+	/**
+	 * `discount.appDiscountType.title`; declared only by DiscountCodeApp and DiscountAutomaticApp, measured on 8 of 169. For an app-function discount this is the closest thing to a `summary`, which those two members do not declare
+	 */
+	appDiscountTypeTitle: string | null;
+	/**
+	 * `discount.appliesOncePerCustomer`; `Boolean!` on the four code members and absent from the four automatic ones, so null means automatic. Measured present on 162 of 169
+	 */
+	appliesOncePerCustomer: boolean | null;
+	/**
+	 * `discount.asyncUsageCount`; `Int!` on all eight members, measured 169/169. Redemptions counted asynchronously. DO NOT TREAT IT AS A FRESHNESS SIGNAL: whether a redemption moves `shopifyUpdatedAt` has never been observed here
+	 */
+	asyncUsageCount: number;
+	/**
+	 * `discount.codesCount.count`; `Count` on the four code members, absent from the automatic ones. Measured present on 162 of 169 and EQUAL to the number of `shopify_discounts_v1__DiscountRedeemCode` rows for the discount on every one of them — the importer checks that rather than assuming it. `codesCount.precision` was EXACT on all 162 and is not promoted; an APPROXIMATE precision would make this an estimate and lives in `doc`
+	 */
+	codeCount: number | null;
+	/**
+	 * `discount.combinesWith.orderDiscounts`; `DiscountCombinesWith!` on all eight members, so the object is always present, measured 169/169
+	 */
+	combinesWithOrderDiscounts: boolean;
+	/**
+	 * `discount.combinesWith.productDiscounts`; measured 169/169
+	 */
+	combinesWithProductDiscounts: boolean;
+	/**
+	 * `discount.combinesWith.shippingDiscounts`; measured 169/169
+	 */
+	combinesWithShippingDiscounts: boolean;
+	/**
+	 * OUR row bookkeeping: when this row was first written. Not a Shopify field
+	 */
+	createdAt: InstantColumn;
+	/**
+	 * `discount.discountClasses`; `[DiscountClass!]!` on all eight members, measured 169/169. Persisted as JSONB because it is a small closed-enum ARRAY — PRODUCT (137 rows), ORDER (29) and SHIPPING (5) — and splitting it into booleans would invent a shape Shopify does not have
+	 */
+	discountClasses: Json;
+	/**
+	 * `discount.__typename`, the union discriminator, and the column that says which shape `doc` has. One of eight: DiscountCodeBasic, DiscountCodeBxgy, DiscountCodeFreeShipping, DiscountCodeApp, DiscountAutomaticBasic, DiscountAutomaticBxgy, DiscountAutomaticFreeShipping, DiscountAutomaticApp. Five occurred on 2026-08-18 — 153 / 5 / 3 / 1 / 7 respectively, with the three automatic non-app members absent. A ninth value is a decode failure, not a new row
+	 */
+	discountType: string;
+	/**
+	 * The verbatim validated discount node from the bulk JSONL, persisted as JSONB, including `__typename` and every member-specific field no column promotes. It does NOT contain the redeem codes — those arrive as their own JSONL lines and become `shopify_discounts_v1__DiscountRedeemCode` rows. Typed `Unknown` because no vendored Shopify type exists
+	 */
+	doc: Json;
+	/**
+	 * SOURCE instant: `discount.endsAt`; `DateTime` (nullable) on all eight members. Measured null on 86 of 169, which is a discount with no end date rather than a missing value
+	 */
+	endsAt: InstantColumn | null;
+	/**
+	 * OUR row bookkeeping AND the whole-set refresh marker: every row of a successful run carries that run's single instant WHETHER OR NOT ANY VALUE CHANGED, and rows older than it are deleted for this shop. Not a Shopify field
+	 */
+	fetchedAt: InstantColumn;
+	/**
+	 * Full Shopify GID of the discount node. Measured as one of exactly two namespaces on 2026-08-18 — `gid://shopify/DiscountCodeNode/<n>` on 162 rows and `gid://shopify/DiscountAutomaticNode/<n>` on 7 — never `DiscountNode`, which is the GraphQL type name and not an id namespace
+	 */
+	id: string;
+	/**
+	 * The type segment of `id`: `DiscountCodeNode` (162 of 169 measured) or `DiscountAutomaticNode` (7). It is the coarse code-versus-automatic split, and it is derived from the GID rather than from `discountType` so the two can be checked against each other
+	 */
+	nodeType: string;
+	/**
+	 * The Shopify shop id this row came from — see `shopify_products_v1__Product.ts`. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 */
+	shopId: Int8;
+	/**
+	 * SOURCE instant: `discount.createdAt`; `DateTime!` on all eight members, measured 169/169. The oldest measured is 2016-12-16
+	 */
+	shopifyCreatedAt: InstantColumn;
+	/**
+	 * SOURCE instant: `discount.updatedAt`; `DateTime!` on all eight members, measured 169/169. Q05 measured it moving on 0 of 168 rows across a 7.24-hour window. NOT USED AS A FILTER — see the header for why that is a statement about pointlessness rather than about correctness
+	 */
+	shopifyUpdatedAt: InstantColumn;
+	/**
+	 * `discount.shortSummary`; `String!` on the four Basic and FreeShipping members only, absent from both Bxgy and both App members. Measured on 156 of 169
+	 */
+	shortSummary: string | null;
+	/**
+	 * SOURCE instant: `discount.startsAt`; `DateTime!` on all eight members, measured 169/169
+	 */
+	startsAt: InstantColumn;
+	/**
+	 * `discount.status`; `DiscountStatus!` on all eight members, measured 169/169. The enum is ACTIVE, EXPIRED, SCHEDULED; 87 ACTIVE and 82 EXPIRED were measured and SCHEDULED was not seen. Stored as text rather than a Literal union so a new enum member is a row rather than a failure
+	 */
+	status: string;
+	/**
+	 * `discount.summary`; `String!` on the six non-app members and ABSENT from DiscountCodeApp and DiscountAutomaticApp, so null means the member does not declare it rather than that the value was empty. Measured on 161 of 169. Shopify's own rendering of what the discount does, e.g. `10% off one-time purchase products • One use per customer`. It is the stand-in for the deep unions this document does not select — see the header
+	 */
+	summary: string | null;
+	/**
+	 * `discount.title`; `String!` on all eight members, measured 169/169. The merchant-facing name, which on a code discount is usually but not always the code itself
+	 */
+	title: string;
+	/**
+	 * `discount.totalSales.amount`; `MoneyV2` (nullable) on the four code members and on DiscountAutomaticFreeShipping, absent from the other three automatic members. Measured non-null on 92 of 169: null is a discount that has never been redeemed, which is 70 of the 162 code discounts. NUMERIC column via the postgresType override
+	 */
+	totalSalesAmount: Numeric | null;
+	/**
+	 * `discount.totalSales.currencyCode`, paired with `totalSalesAmount` and null exactly when it is. Measured USD on all 92
+	 */
+	totalSalesCurrency: string | null;
+	/**
+	 * `discount.usageLimit`; `Int` on the four code members only. NULL FOR TWO INDISTINGUISHABLE REASONS: the 7 automatic discounts do not declare the field, and 148 of the 162 code discounts declare it as null meaning unlimited. Measured non-null on 14 of 169
+	 */
+	usageLimit: number | null;
+}
+
+/**
+ * One Shopify DiscountRedeemCode per (shopId, id) — a redeemable code
+ * belonging to one discount. A child of shopify_discounts_v1__Discount via
+ * discountGid, refreshed as a whole set on every run; fetchedAt marks which
+ * rows the latest successful run returned and older rows are deleted before
+ * their parents.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_shopify_discounts_v1__DiscountRedeemCode {
+	/**
+	 * `DiscountRedeemCode.asyncUsageCount`; `Int!`, measured 162/162. Redemptions of THIS code, counted asynchronously. It is a per-code breakdown of the parent's own `asyncUsageCount`, and the two are equal on this store only because every discount here has exactly one code
+	 */
+	asyncUsageCount: number;
+	/**
+	 * `DiscountRedeemCode.code`; `String!`, measured 162/162. The string a shopper types at checkout, and the value that joins to an order's discount codes. NOT the primary key — nothing measured says a retired code string cannot be reused on a later discount
+	 */
+	code: string;
+	/**
+	 * OUR row bookkeeping: when this row was first written. Not a Shopify field
+	 */
+	createdAt: InstantColumn;
+	/**
+	 * The owning discount's GID, from the bulk JSONL's `__parentId`; always a `DiscountCodeNode` GID, because the four members that declare a `codes` connection are exactly the four code members. Refers to `shopify_discounts_v1__Discount.id`; no declared foreign key
+	 */
+	discountGid: string;
+	/**
+	 * The verbatim validated DiscountRedeemCode node from the bulk JSONL, persisted as JSONB, including its `__parentId`. Typed `Unknown` because no vendored Shopify type exists
+	 */
+	doc: Json;
+	/**
+	 * OUR row bookkeeping AND the whole-set refresh marker, as on the parent table: every row of a successful run carries that run's single instant whether or not any value changed, and rows older than it are deleted for this shop. Not a Shopify field
+	 */
+	fetchedAt: InstantColumn;
+	/**
+	 * Full Shopify `DiscountRedeemCode` GID, e.g. `gid://shopify/DiscountRedeemCode/2167304713`. Measured 162/162 and distinct on every one
+	 */
+	id: string;
+	/**
+	 * The Shopify shop id this row came from — see `shopify_products_v1__Product.ts`. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 */
+	shopId: Int8;
+}
+
+/**
+ * One Shopify InventoryLevel per (shopId, locationId, inventoryItemId) — a
+ * natural triple, because a level is the intersection of a location and an
+ * item and its own GID carries a query string. Read as a whole set on every
+ * run with no watermark and no repair task; fetchedAt marks which rows the
+ * latest successful run returned and older rows are deleted.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_shopify_inventory_v1__InventoryLevel {
+	/**
+	 * `quantities(names: ["available"])`. Measured present on all 447 and non-zero on 345, range -9178 to 8103. NEGATIVE VALUES ARE REAL on this store and are stored as they arrive
+	 */
+	available: number;
+	/**
+	 * `quantities(names: ["committed"])`. Measured present on all 447 and non-zero on 26, range 0 to 59
+	 */
+	committed: number;
+	/**
+	 * OUR row bookkeeping: when this row was first written. Not a Shopify field
+	 */
+	createdAt: InstantColumn;
+	/**
+	 * `quantities(names: ["damaged"])`. Measured present on all 447 and zero on every one. Nullable for the reason given on `reserved`
+	 */
+	damaged: number | null;
+	/**
+	 * The verbatim validated InventoryLevel node from the bulk JSONL, persisted as JSONB, including its `__parentId` and the per-quantity `updatedAt` instants that no column promotes. Typed `Unknown` because no vendored Shopify type exists
+	 */
+	doc: Json;
+	/**
+	 * OUR row bookkeeping AND the whole-set refresh marker: every row of a successful run carries that run's single instant WHETHER OR NOT ANY VALUE CHANGED, and rows older than it are deleted for this shop. It is the only trustworthy freshness signal on this table — Shopify's own `shopifyUpdatedAt` does not always move when a quantity does. Not a Shopify field
+	 */
+	fetchedAt: InstantColumn;
+	/**
+	 * `quantities(names: ["incoming"])`. Measured present on all 447 and zero on every one of them, so any logic keyed on it ships untested here
+	 */
+	incoming: number;
+	/**
+	 * `InventoryLevel.item.legacyResourceId`; `UnsignedInt64!` on `InventoryItem`, measured 447/447. The same value appears on `shopify_products_v1__ProductVariant.inventoryItemId`, which is how a level reaches a variant without depending on `item.variant` being present
+	 */
+	inventoryItemId: Int8;
+	/**
+	 * `InventoryLevel.id`, kept as provenance and NEVER as a key or a join. Shopify returns it as `gid://shopify/InventoryLevel/<n>?inventory_item_id=<m>`, a GID carrying a query string, whose `<n>` is shared by every level at the same location. It cannot be passed to `nodes(ids:)`
+	 */
+	levelGid: string;
+	/**
+	 * `InventoryLevel.location.legacyResourceId`. The bulk JSONL's `__parentId` names the same location as a GID, measured equal on all 447 rows, and the importer checks that rather than assuming it. Refers to `shopify_locations_v1__Location.id`; no declared foreign key
+	 */
+	locationId: Int8;
+	/**
+	 * `quantities(names: ["on_hand"])`. Measured present on all 447 and non-zero on 345, range -9178 to 8132
+	 */
+	onHand: number;
+	/**
+	 * `quantities(names: ["quality_control"])`. Measured present on all 447 and zero on every one. Nullable for the reason given on `reserved`
+	 */
+	qualityControl: number | null;
+	/**
+	 * `quantities(names: ["reserved"])`. Measured present on all 447 and zero on every one. NULLABLE, unlike the four above, because the four inventory states below `committed` depend on what the merchant's plan has enabled and one store is not evidence that every merchant's response carries them; an absent name is stored as null rather than as a fabricated zero
+	 */
+	reserved: number | null;
+	/**
+	 * `quantities(names: ["safety_stock"])`. Measured present on all 447 and zero on every one. Nullable for the reason given on `reserved`
+	 */
+	safetyStock: number | null;
+	/**
+	 * The Shopify shop id this row came from — see `shopify_products_v1__Product.ts`. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 */
+	shopId: Int8;
+	/**
+	 * SOURCE instant: `InventoryLevel.createdAt`; `DateTime!`, measured 447/447
+	 */
+	shopifyCreatedAt: InstantColumn;
+	/**
+	 * SOURCE instant: `InventoryLevel.updatedAt`; `DateTime!`, measured 447/447. DO NOT USE IT AS A FRESHNESS SIGNAL AND DO NOT FILTER ON IT: 6 of the 447 rows carried a per-quantity `updatedAt` newer than this value on 2026-08-17, which is the measurement behind this family keeping no watermark. `fetchedAt` is the column that answers when we last confirmed the row
+	 */
+	shopifyUpdatedAt: InstantColumn;
+	/**
+	 * `InventoryLevel.item.sku`; `String` (nullable in the schema) though measured 447/447 here, 21 characters at the longest. Denormalized onto the level so a stock report does not have to join through the variant table
+	 */
+	sku: string | null;
+	/**
+	 * `InventoryLevel.item.tracked`; `Boolean!`, measured true on only 53 of 447. THIS is the column that says whether a quantity means anything: Shopify keeps returning levels for untracked items and their numbers do not move with sales
+	 */
+	tracked: boolean;
+	/**
+	 * The variant's numeric id, parsed out of `InventoryLevel.item.variant.id`. `ProductVariant` is nullable in the schema — an inventory item need not belong to a variant — though measured 447/447 here. Nullable on the schema's authority. Joins to `shopify_products_v1__ProductVariant.id`
+	 */
+	variantId: Int8 | null;
+}
+
+/**
+ * One Shopify Location per (shopId, id), where id is the location's
+ * legacyResourceId. Read as a whole set on every run with includeInactive and
+ * includeLegacy both true, so the levels table always has its parent;
+ * updatedAt marks which rows the latest successful refresh returned and older
+ * rows are deleted. Geography is promoted, the street address stays in doc.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_shopify_locations_v1__Location {
+	/**
+	 * `Location.address.city`; nullable in the schema and measured on 3 of 4
+	 */
+	addressCity: string | null;
+	/**
+	 * `Location.address.countryCode`; nullable in the schema though measured 4/4. The other address lines — street, zip and phone — stay in `doc`
+	 */
+	addressCountryCode: string | null;
+	/**
+	 * `Location.address.provinceCode`; nullable in the schema and measured on 3 of 4
+	 */
+	addressProvinceCode: string | null;
+	/**
+	 * OUR row bookkeeping: when this row was first written. Not a Shopify field
+	 */
+	createdAt: InstantColumn;
+	/**
+	 * The validated Location node, persisted as JSONB — every field the pinned query selects, which is where the full address lives: street lines, province name, country name, zip and phone. NOT the raw response body: this family arrives as a decoded GraphQL page rather than as a JSONL line, so `doc` is the node after validation. Nothing the query returns is dropped on the way, which is what makes a later promotion possible without a re-fetch. Typed `Unknown` because no vendored Shopify type exists
+	 */
+	doc: Json;
+	/**
+	 * `Location.fulfillsOnlineOrders`; `Boolean!`, measured true on 3 of 4
+	 */
+	fulfillsOnlineOrders: boolean;
+	/**
+	 * `Location.hasActiveInventory`; `Boolean!`, measured true on 2 of 4 — and those are exactly the two locations that carry inventory levels (402 and 45 of the 447). The other two return no levels at all, so this column is the cheap answer to 'why does this location have no rows in the levels table'
+	 */
+	hasActiveInventory: boolean;
+	/**
+	 * `Location.legacyResourceId`, the REST Admin API id that appears in the merchant's admin URLs; `UnsignedInt64!` and measured 4/4. THE KEY, and the value `shopify_inventory_v1__InventoryLevel.locationId` refers to. The full GID is `gid://shopify/Location/<this>` and is not stored, because nothing here rebuilds one. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 */
+	id: Int8;
+	/**
+	 * `Location.isActive`; `Boolean!`, measured true on all 4. A deactivated location can still hold inventory levels, which is why the read passes `includeInactive: true` rather than relying on this column to explain a missing parent
+	 */
+	isActive: boolean;
+	/**
+	 * `Location.isFulfillmentService`; `Boolean!`, measured true on 1 of 4. That one location is the one only `includeLegacy: true` returns, and it holds 45 inventory levels
+	 */
+	isFulfillmentService: boolean;
+	/**
+	 * `Location.name`; `String!`, measured 4/4. A business label, not person data
+	 */
+	name: string;
+	/**
+	 * `Location.shipsInventory`; `Boolean!`, measured true on 1 of 4
+	 */
+	shipsInventory: boolean;
+	/**
+	 * The Shopify shop id this row came from — see `shopify_products_v1__Product.ts`. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 */
+	shopId: Int8;
+	/**
+	 * SOURCE instant: `Location.createdAt`; `DateTime!`, measured 4/4. Prefixed `shopify` so it cannot be confused with our own `createdAt` bookkeeping column
+	 */
+	shopifyCreatedAt: InstantColumn;
+	/**
+	 * SOURCE instant: `Location.updatedAt`; `DateTime!`, measured 4/4. NOT a watermark — this family is a whole-set read and keeps no row in `op_shopify_bulk_v1__watermark`
+	 */
+	shopifyUpdatedAt: InstantColumn;
+	/**
+	 * OUR row bookkeeping AND the whole-set refresh marker: every row of a successful refresh carries that run's single instant, and rows older than it are deleted for this shop. Not a Shopify field
+	 */
+	updatedAt: InstantColumn;
+}
+
+/**
+ * One Shopify Order per (shopId, id), where id is the order's
+ * legacyResourceId. Loaded once in full and then swept incrementally by
+ * updatedAt; UPSERT-ONLY, so no sweep ever deletes an order. Every money
+ * amount is an exact decimal string in NUMERIC with its own currency code
+ * beside it, for both the shop and presentment halves of the MoneyBag. Person
+ * data stays in doc.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_shopify_orders_v1__Order {
+	/**
+	 * `Order.billingAddress.city`. The address itself is nullable (measured null on 6 rows)
+	 */
+	billingCity: string | null;
+	/**
+	 * `Order.billingAddress.countryCodeV2`; measured 99.98% filled
+	 */
+	billingCountryCodeV2: string | null;
+	/**
+	 * `Order.billingAddress.provinceCode`; measured 99.77% filled
+	 */
+	billingProvinceCode: string | null;
+	/**
+	 * OUR row bookkeeping: when this row was first written. Not a Shopify field
+	 */
+	createdAt: InstantColumn;
+	/**
+	 * `Order.currencyCode`, the shop's currency at the time the order was placed; `CurrencyCode!`, measured 50,085/50,085 with 2 distinct values (USD and AUD). This is order metadata, NOT the denomination of any column here — every amount below carries its own code
+	 */
+	currencyCode: string;
+	/**
+	 * The customer's numeric id, parsed out of `Order.customer.id`. `Customer` is nullable in the schema and MEASURED null on 2 of 50,085 orders, so this column is nullable. It joins to `shopify_customers_v1__Customer.id`, which is the same number; no declared foreign key
+	 */
+	customerId: Int8 | null;
+	/**
+	 * `Order.displayFinancialStatus`; `OrderDisplayFinancialStatus` — NULLABLE in the schema even though it measured 100% filled with 6 distinct values, so the column is nullable too. Schema.String and NOT Schema.Literal: Shopify may add an enum member in any quarterly version, and a Literal turns that into an ingest failure on a row we could otherwise have stored
+	 */
+	displayFinancialStatus: string | null;
+	/**
+	 * `Order.displayFulfillmentStatus`; `OrderDisplayFulfillmentStatus!`, measured 50,085/50,085 with 4 distinct values. Schema.String and not a Literal, for the same reason
+	 */
+	displayFulfillmentStatus: string;
+	/**
+	 * The verbatim validated Order node from the bulk JSONL, persisted as JSONB. Holds `tags`, `email`, `phone`, `note`, the full addresses and everything else the pinned query returns but does not promote, which is what makes a later promotion possible without a re-fetch. Typed `Unknown` because no vendored Shopify type exists to pin a struct against. Never logged
+	 */
+	doc: Json;
+	/**
+	 * `Order.legacyResourceId`, the REST Admin API id that appears in the merchant's admin URLs; `UnsignedInt64!` on the pinned API version. THE KEY: the full GID is `gid://shopify/Order/<this>` and is not stored, because nothing here rebuilds one. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 */
+	id: Int8;
+	/**
+	 * `Order.name`, the merchant-facing order number such as `#50453`; `String!`, measured 50,085/50,085. A business string, not person data
+	 */
+	name: string;
+	/**
+	 * `Order.shippingAddress.city`. The address itself is nullable (measured null on 4 rows)
+	 */
+	shippingCity: string | null;
+	/**
+	 * `Order.shippingAddress.countryCodeV2`; measured 99.98% filled, 37 distinct values
+	 */
+	shippingCountryCodeV2: string | null;
+	/**
+	 * `Order.shippingAddress.provinceCode`; measured 99.84% filled
+	 */
+	shippingProvinceCode: string | null;
+	/**
+	 * The Shopify shop id this row came from — see `shopify_products_v1__Product.ts`. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 */
+	shopId: Int8;
+	/**
+	 * SOURCE instant: `Order.cancelledAt`; `DateTime` (nullable), measured 1.66% filled
+	 */
+	shopifyCancelledAt: InstantColumn | null;
+	/**
+	 * SOURCE instant: `Order.closedAt`; `DateTime` (nullable), measured 99.28% filled
+	 */
+	shopifyClosedAt: InstantColumn | null;
+	/**
+	 * SOURCE instant: `Order.createdAt`; `DateTime!`, measured 50,085/50,085. Prefixed `shopify` so it cannot be confused with our own `createdAt` bookkeeping column
+	 */
+	shopifyCreatedAt: InstantColumn;
+	/**
+	 * SOURCE instant: `Order.processedAt`, when the order was processed by the payment provider; `DateTime!`, measured 50,085/50,085
+	 */
+	shopifyProcessedAt: InstantColumn;
+	/**
+	 * SOURCE instant: `Order.updatedAt`; `DateTime!`, measured 50,085/50,085. This is the field the incremental sweep filters on, but it is NOT the durable watermark: Shopify returns it TRUNCATED TO THE SECOND (Q05 decoded the pagination cursor to prove sub-second precision exists and is dropped), so treating a returned value as an exact instant loses up to a second of rows. The watermark lives in `op_shopify_bulk_v1__watermark` with an explicit overlap
+	 */
+	shopifyUpdatedAt: InstantColumn;
+	/**
+	 * `Order.subtotalPriceSet.presentmentMoney.amount`
+	 */
+	subtotalPricePresentmentAmount: Numeric | null;
+	/**
+	 * `Order.subtotalPriceSet.presentmentMoney.currencyCode`
+	 */
+	subtotalPricePresentmentCurrency: string | null;
+	/**
+	 * `Order.subtotalPriceSet.shopMoney.amount`. NULLABLE because `subtotalPriceSet` is `MoneyBag` rather than `MoneyBag!`, despite measuring 100% filled
+	 */
+	subtotalPriceShopAmount: Numeric | null;
+	/**
+	 * `Order.subtotalPriceSet.shopMoney.currencyCode`
+	 */
+	subtotalPriceShopCurrency: string | null;
+	/**
+	 * `Order.test`; `Boolean!`, measured 50,085/50,085 with exactly 1 test order. Rare but real, so it must be filterable rather than assumed away
+	 */
+	test: boolean;
+	/**
+	 * `Order.totalDiscountsSet.presentmentMoney.amount`
+	 */
+	totalDiscountsPresentmentAmount: Numeric | null;
+	/**
+	 * `Order.totalDiscountsSet.presentmentMoney.currencyCode`
+	 */
+	totalDiscountsPresentmentCurrency: string | null;
+	/**
+	 * `Order.totalDiscountsSet.shopMoney.amount`. NULLABLE: `totalDiscountsSet` is `MoneyBag`
+	 */
+	totalDiscountsShopAmount: Numeric | null;
+	/**
+	 * `Order.totalDiscountsSet.shopMoney.currencyCode`
+	 */
+	totalDiscountsShopCurrency: string | null;
+	/**
+	 * `Order.totalPriceSet.presentmentMoney.amount`, what the buyer was charged in
+	 */
+	totalPricePresentmentAmount: Numeric;
+	/**
+	 * `Order.totalPriceSet.presentmentMoney.currencyCode`. Differs from the shop half on exactly 1 of 50,085 orders here — too rare to rely on, too real to discard
+	 */
+	totalPricePresentmentCurrency: string;
+	/**
+	 * `Order.totalPriceSet.shopMoney.amount`; the bag is `MoneyBag!` and measured 100% filled
+	 */
+	totalPriceShopAmount: Numeric;
+	/**
+	 * `Order.totalPriceSet.shopMoney.currencyCode`. The denomination of the column above and of nothing else. Measured USD on 49,897 rows and AUD on 188
+	 */
+	totalPriceShopCurrency: string;
+	/**
+	 * `Order.totalRefundedSet.presentmentMoney.amount`
+	 */
+	totalRefundedPresentmentAmount: Numeric;
+	/**
+	 * `Order.totalRefundedSet.presentmentMoney.currencyCode`
+	 */
+	totalRefundedPresentmentCurrency: string;
+	/**
+	 * `Order.totalRefundedSet.shopMoney.amount`; the bag is `MoneyBag!`, measured 100%. Zero on an unrefunded order rather than absent
+	 */
+	totalRefundedShopAmount: Numeric;
+	/**
+	 * `Order.totalRefundedSet.shopMoney.currencyCode`
+	 */
+	totalRefundedShopCurrency: string;
+	/**
+	 * `Order.totalShippingPriceSet.presentmentMoney.amount`
+	 */
+	totalShippingPricePresentmentAmount: Numeric;
+	/**
+	 * `Order.totalShippingPriceSet.presentmentMoney.currencyCode`
+	 */
+	totalShippingPricePresentmentCurrency: string;
+	/**
+	 * `Order.totalShippingPriceSet.shopMoney.amount`; the bag is `MoneyBag!`, measured 100%
+	 */
+	totalShippingPriceShopAmount: Numeric;
+	/**
+	 * `Order.totalShippingPriceSet.shopMoney.currencyCode`
+	 */
+	totalShippingPriceShopCurrency: string;
+	/**
+	 * `Order.totalTaxSet.presentmentMoney.amount`
+	 */
+	totalTaxPresentmentAmount: Numeric | null;
+	/**
+	 * `Order.totalTaxSet.presentmentMoney.currencyCode`
+	 */
+	totalTaxPresentmentCurrency: string | null;
+	/**
+	 * `Order.totalTaxSet.shopMoney.amount`. NULLABLE: `totalTaxSet` is `MoneyBag`
+	 */
+	totalTaxShopAmount: Numeric | null;
+	/**
+	 * `Order.totalTaxSet.shopMoney.currencyCode`
+	 */
+	totalTaxShopCurrency: string | null;
+	/**
+	 * OUR row bookkeeping: when this row was last written by a sweep. NOT a refresh marker — unlike the products tables nothing in this table is ever deleted for being stamped earlier, because an incremental sweep returns only what changed. Not a Shopify field
+	 */
+	updatedAt: InstantColumn;
+}
+
+/**
+ * One Shopify order line item per (shopId, id), where id is the numeric tail
+ * of the LineItem GID and orderId is parsed from the bulk JSONL __parentId.
+ * Money is an exact decimal string in NUMERIC with its own currency beside it,
+ * shopMoney only. Refreshed as a whole set PER PARENT ORDER: updatedAt marks
+ * which lines the latest sweep returned, and only lines of the orders that
+ * sweep carried are ever deleted.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_shopify_orders_v1__OrderLineItem {
+	/**
+	 * OUR row bookkeeping: when this row was first written. Not a Shopify field — `LineItem` exposes no source timestamps of its own
+	 */
+	createdAt: InstantColumn;
+	/**
+	 * `LineItem.currentQuantity`, quantity after refunds and removals; `Int!`, measured 100%
+	 */
+	currentQuantity: number;
+	/**
+	 * `LineItem.discountedTotalSet.shopMoney.amount`; `MoneyBag!`, measured 100%
+	 */
+	discountedTotalAmount: Numeric;
+	/**
+	 * `LineItem.discountedTotalSet.shopMoney.currencyCode`
+	 */
+	discountedTotalCurrency: string;
+	/**
+	 * `LineItem.discountedUnitPriceSet.shopMoney.amount`; `MoneyBag!`, measured 100%
+	 */
+	discountedUnitPriceAmount: Numeric;
+	/**
+	 * `LineItem.discountedUnitPriceSet.shopMoney.currencyCode`
+	 */
+	discountedUnitPriceCurrency: string;
+	/**
+	 * The verbatim validated LineItem node from the bulk JSONL, persisted as JSONB, including its `__parentId`. Typed `Unknown` because no vendored Shopify type exists. Never logged
+	 */
+	doc: Json;
+	/**
+	 * The numeric tail of `LineItem.id`, e.g. 19664282419388 from `gid://shopify/LineItem/19664282419388`. THE KEY, and the one key in this schema that Shopify does not also publish as a `legacyResourceId` — see the header. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 */
+	id: Int8;
+	/**
+	 * `LineItem.name`, the title as shown to the buyer including the variant; `String!`, measured 78,124/78,124
+	 */
+	name: string;
+	/**
+	 * The parent Order's id, parsed out of the bulk JSONL's `__parentId`. NOT a selectable GraphQL field. Measured 78,124/78,124, every one immediately following its own parent line. Equal to `shopify_orders_v1__Order.id`, which Shopify supplies as `legacyResourceId` on the parent line rather than as a GID tail — the two are the same number
+	 */
+	orderId: Int8;
+	/**
+	 * `LineItem.originalTotalSet.shopMoney.amount`; `MoneyBag!`, measured 100%
+	 */
+	originalTotalAmount: Numeric;
+	/**
+	 * `LineItem.originalTotalSet.shopMoney.currencyCode`
+	 */
+	originalTotalCurrency: string;
+	/**
+	 * `LineItem.originalUnitPriceSet.shopMoney.amount`; `MoneyBag!`, measured 100%
+	 */
+	originalUnitPriceAmount: Numeric;
+	/**
+	 * `LineItem.originalUnitPriceSet.shopMoney.currencyCode`. The denomination of the column above and of nothing else
+	 */
+	originalUnitPriceCurrency: string;
+	/**
+	 * The product's numeric id, parsed out of `LineItem.product.id`. `Product` is nullable and MEASURED null on 2,275 of 78,124 rows — Shopify severs the reference when a product is deleted, so a null here is the fingerprint of a deleted product rather than a dangling id. Joins to `shopify_products_v1__Product.id`
+	 */
+	productId: Int8 | null;
+	/**
+	 * `LineItem.quantity` as ordered; `Int!`, measured 78,124/78,124
+	 */
+	quantity: number;
+	/**
+	 * `LineItem.requiresShipping`; `Boolean!`, measured 78,124/78,124
+	 */
+	requiresShipping: boolean;
+	/**
+	 * The Shopify shop id this row came from — see `shopify_products_v1__Product.ts`. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 */
+	shopId: Int8;
+	/**
+	 * `LineItem.sku`; `String` — NULLABLE in the schema though measured 78,124/78,124 here. Kept nullable because one store's SKU discipline is not evidence about every merchant's
+	 */
+	sku: string | null;
+	/**
+	 * `LineItem.taxable`; `Boolean!`, measured 78,124/78,124
+	 */
+	taxable: boolean;
+	/**
+	 * `LineItem.title`, the product title at the time of sale; `String!`, measured 100%
+	 */
+	title: string;
+	/**
+	 * OUR row bookkeeping AND the PER-PARENT refresh marker: every line a sweep writes carries that run's single instant, and lines belonging to the orders that sweep returned whose stamp is older are deleted. Scoped to those parent ids and never global. Not a Shopify field
+	 */
+	updatedAt: InstantColumn;
+	/**
+	 * The variant's numeric id, parsed out of `LineItem.variant.id`. Nullable, MEASURED null on 2,614 rows. Joins to `shopify_products_v1__ProductVariant.id`
+	 */
+	variantId: Int8 | null;
+	/**
+	 * `LineItem.variantTitle`; `String` (nullable), MEASURED null on 61,893 of 78,124 rows
+	 */
+	variantTitle: string | null;
+	/**
+	 * `LineItem.vendor`; `String` (nullable) and MEASURED null on 7 of 78,124 rows. 3 distinct values on this store
+	 */
+	vendor: string | null;
+}
+
+/**
+ * One Shopify Product per (shopId, id), where id is the product's
+ * legacyResourceId. Refreshed as a whole set from an Admin GraphQL bulk
+ * operation; `updatedAt` is both our bookkeeping stamp and the marker that
+ * identifies rows the latest successful refresh did not return.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_shopify_products_v1__Product {
+	/**
+	 * OUR row bookkeeping: when this row was first written. Not a Shopify field
+	 */
+	createdAt: InstantColumn;
+	/**
+	 * The verbatim validated Product node from the bulk JSONL, persisted as JSONB. Holds `tags` and anything else the pinned query returns but does not promote, which is what makes a later promotion possible without a re-fetch. Typed `Unknown` rather than a struct because no vendored Shopify type exists to pin a struct against
+	 */
+	doc: Json;
+	/**
+	 * `Product.handle`, the storefront URL slug; `String!`, measured 49/49
+	 */
+	handle: string;
+	/**
+	 * `Product.legacyResourceId`, the REST Admin API id that appears in the merchant's admin URLs; `UnsignedInt64!` on the pinned API version. THE KEY: the full GID is `gid://shopify/Product/<this>` and is not stored, because nothing here rebuilds one. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 */
+	id: Int8;
+	/**
+	 * `Product.productType`; `String!`, measured 49/49, 19 distinct
+	 */
+	productType: string;
+	/**
+	 * THE STORE THIS ROW CAME FROM: the Shopify shop id, i.e. the decimal tail of `gid://shopify/Shop/<digits>`, and the value `SovConnector.connectorKey` holds for the connector that fetched it. See the header. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 */
+	shopId: Int8;
+	/**
+	 * SOURCE instant: `Product.createdAt`; `DateTime!` (RFC 3339 UTC), measured 49/49. Prefixed `shopify` so it cannot be confused with our own `createdAt` bookkeeping column
+	 */
+	shopifyCreatedAt: InstantColumn;
+	/**
+	 * SOURCE instant: `Product.publishedAt`; `DateTime` (nullable in the schema) and MEASURED null on 9 of 49 rows — an unpublished product
+	 */
+	shopifyPublishedAt: InstantColumn | null;
+	/**
+	 * SOURCE instant: `Product.updatedAt`; `DateTime!`, measured 49/49. Prefixed `shopify` for the same reason as `shopifyCreatedAt`. NOT a watermark — this family is a whole-set refresh and reads every product every run
+	 */
+	shopifyUpdatedAt: InstantColumn;
+	/**
+	 * `Product.status`; `ProductStatus!`, measured 49/49 with 2 distinct values. Schema.String and NOT Schema.Literal on purpose: Shopify may add an enum member in any quarterly version, and a Literal turns that into an ingest failure on a row we could otherwise have stored (the same call `tfl_orders_v1__Order` made for `financialStatus`)
+	 */
+	status: string;
+	/**
+	 * `Product.title`; `String!`, measured 49/49
+	 */
+	title: string;
+	/**
+	 * `Product.totalInventory`; `Int!`, measured 49/49
+	 */
+	totalInventory: number;
+	/**
+	 * OUR row bookkeeping AND the whole-set refresh marker: every row of a successful refresh carries that run's single instant, and rows older than it are deleted for this shop. Not a Shopify field
+	 */
+	updatedAt: InstantColumn;
+	/**
+	 * `Product.vendor`; `String!`, measured 49/49
+	 */
+	vendor: string;
+}
+
+/**
+ * One Shopify ProductVariant per (shopId, id), where id is the variant's
+ * legacyResourceId and productId is parsed from the bulk JSONL __parentId.
+ * Money is an exact decimal string in NUMERIC with the shop currency beside
+ * it. Refreshed as a whole set; updatedAt marks which rows the latest
+ * successful refresh returned.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_shopify_products_v1__ProductVariant {
+	/**
+	 * `ProductVariant.barcode`; `String`, MEASURED null on 408 of 445 rows
+	 */
+	barcode: string | null;
+	/**
+	 * `ProductVariant.compareAtPrice`; `Money` (nullable) and MEASURED null on 420 of 445 rows. Same exact-decimal treatment as `price`, denominated in `currencyCode`
+	 */
+	compareAtPrice: Numeric | null;
+	/**
+	 * OUR row bookkeeping: when this row was first written. Not a Shopify field
+	 */
+	createdAt: InstantColumn;
+	/**
+	 * The currency BOTH amounts above are denominated in. Shopify's scalar Money carries no code, so this is `shop.currencyCode` from `wsid_shopify_shop_v1__Shop`, captured at import time. A products run refuses to write until it is known, so this column is never a guess
+	 */
+	currencyCode: string;
+	/**
+	 * The verbatim validated ProductVariant node from the bulk JSONL, persisted as JSONB, including its `__parentId`. Typed `Unknown` because no vendored Shopify type exists
+	 */
+	doc: Json;
+	/**
+	 * `ProductVariant.legacyResourceId`, the REST Admin API id that appears in the merchant's admin URLs; `UnsignedInt64!` on the pinned API version. THE KEY: the full GID is `gid://shopify/ProductVariant/<this>` and is not stored, because nothing here rebuilds one. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 */
+	id: Int8;
+	/**
+	 * The inventory item's numeric id, parsed out of `ProductVariant.inventoryItem.id`; `InventoryItem!` in the schema, measured 445/445. The join key to `shopify_inventory_v1__InventoryLevel.inventoryItemId`
+	 */
+	inventoryItemId: Int8;
+	/**
+	 * `ProductVariant.inventoryQuantity`; `Int` (NULLABLE in the schema — Shopify returns none for an untracked variant) though measured 445/445 here
+	 */
+	inventoryQuantity: number | null;
+	/**
+	 * `ProductVariant.position` within its product; `Int!`, measured 445/445
+	 */
+	position: number;
+	/**
+	 * `ProductVariant.price`; `Money!`, measured 445/445. An exact decimal STRING stored NUMERIC, never a float. Denominated in `currencyCode`
+	 */
+	price: Numeric;
+	/**
+	 * The parent Product's id, parsed out of the bulk JSONL's `__parentId`. NOT a selectable GraphQL field. Measured 445/445; a variant without one is a decode failure. Joins to `shopify_products_v1__Product.id`
+	 */
+	productId: Int8;
+	/**
+	 * The Shopify shop id this row came from — see `shopify_products_v1__Product.ts`. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 */
+	shopId: Int8;
+	/**
+	 * SOURCE instant: `ProductVariant.createdAt`; `DateTime!`, measured 445/445. Prefixed `shopify` so it cannot be confused with our own `createdAt` bookkeeping column
+	 */
+	shopifyCreatedAt: InstantColumn;
+	/**
+	 * SOURCE instant: `ProductVariant.updatedAt`; `DateTime!`, measured 445/445. NOT a watermark — this family is a whole-set refresh
+	 */
+	shopifyUpdatedAt: InstantColumn;
+	/**
+	 * `ProductVariant.sku`; `String` (NULLABLE in the schema) though measured 445/445 on this store. Kept nullable because one catalogue's SKU discipline is not evidence about every merchant's, and a variant genuinely may carry none
+	 */
+	sku: string | null;
+	/**
+	 * `ProductVariant.title`; `String!`, measured 445/445 (commonly "Default Title")
+	 */
+	title: string;
+	/**
+	 * OUR row bookkeeping AND the whole-set refresh marker: every row of a successful refresh carries that run's single instant, and rows older than it are deleted for this shop. Not a Shopify field
+	 */
+	updatedAt: InstantColumn;
+}
+
+/**
+ * One shop-local day of the Shopify ShopifyQL `sales` dataset per (shopId,
+ * day). A TIME SERIES, upserted over a trailing re-fetch window and never
+ * deleted — unlike every other Shopify tenant table. Every measure is an exact
+ * decimal string in NUMERIC, including counts and percentages. total_sales is
+ * Shopify's own definition and does not equal the sum of order totals in
+ * shopify_orders_v1__Order.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_shopify_reports_v1__SalesDaily {
+	/**
+	 * `MONEY`. Zero on every one of the 1,201 measured days on this store
+	 */
+	additional_fees: Numeric;
+	/**
+	 * `MONEY`, and a DERIVED measure the source computes — not `total_sales / orders` as computed from this row. Stored as returned so it matches the merchant's admin. NULLABLE because it is a quotient over `orders`, so a day with none has no average order value
+	 */
+	average_order_value: Numeric | null;
+	/**
+	 * `MONEY`, and it depends on the merchant maintaining a cost per variant — a store that does not will read zero here rather than null. Measured negative on 1 of 1,201 days, so the column admits either sign
+	 */
+	cost_of_goods_sold: Numeric;
+	/**
+	 * OUR row bookkeeping: when this day was FIRST written. Excluded from the upsert's update columns, so a day re-read inside the re-fetch window keeps its original value. Not a Shopify field
+	 */
+	createdAt: InstantColumn;
+	/**
+	 * `INTEGER`. Customers who placed an order on this day
+	 */
+	customers: Numeric;
+	/**
+	 * The ShopifyQL `day` dimension: a SHOP-LOCAL calendar day as `YYYY-MM-DD`, measured well-formed on 1,201/1,201 rows. `Schema.String` plus postgresType DATE and NOT `Schema.DateTimeUtc`, following `tfl_products_v1__WarehouseInventory.localdate`: a calendar day is not an instant, and a TIMESTAMPTZ column would reintroduce the timezone ambiguity this column exists to remove. Which day a sale falls on is decided by the shop's own timezone, which is why the task is DAILY_ZONED
+	 */
+	day: PlainDateColumn;
+	/**
+	 * `MONEY`. NEGATIVE in normal operation — measured negative on 1,195 of 1,201 days. The sign is the source's and is not normalised here
+	 */
+	discounts: Numeric;
+	/**
+	 * `MONEY`. Zero on every one of the 1,201 measured days on this store; the column exists because the dataset declares it, not because it has ever been non-zero here
+	 */
+	duties: Numeric;
+	/**
+	 * `MONEY`. Zero on every one of the 1,201 measured days on this store
+	 */
+	gift_card_discounts: Numeric;
+	/**
+	 * `PERCENT` as a UNIT FRACTION. Derived by the source, and it can exceed 1.0 when the cost data behind `cost_of_goods_sold` is incomplete — 1.215 was measured on 2026-08-17. Stored as returned rather than clamped. NULLABLE, and the ONE column in this family where a null has actually been seen: it is `gross_profit` over `net_sales`, and the store that produced it returned no value for 2026-08-02
+	 */
+	gross_margin: Numeric | null;
+	/**
+	 * `MONEY`. Derived by the source from `net_sales` and `cost_of_goods_sold`; stored as returned rather than recomputed, and therefore only as trustworthy as the cost data behind it
+	 */
+	gross_profit: Numeric;
+	/**
+	 * `MONEY`. Product sales before any discount, return, tax or shipping. Exact decimal string
+	 */
+	gross_sales: Numeric;
+	/**
+	 * `MONEY`. Gross sales less discounts and returns, before taxes and shipping. Exact decimal string; up to 3 decimal places measured
+	 */
+	net_sales: Numeric;
+	/**
+	 * `INTEGER`. First-time customers within `customers`
+	 */
+	new_customers: Numeric;
+	/**
+	 * `INTEGER`, carried as an exact decimal string in NUMERIC like every other measure here. ShopifyQL's own order count, which uses a DIFFERENT inclusion rule from a row count over `shopify_orders_v1__Order` — 42 against 43 for 2026-08-10 on the shakedown store
+	 */
+	orders: Numeric;
+	/**
+	 * `PERCENT`, expressed as a UNIT FRACTION rather than a percentage: 0.5357142857142857 means 53.57%. Measured at up to 18 decimal places, which is the independent reason every measure in this table is an exact decimal string rather than a double. NULLABLE because it is a quotient over `customers`, so a day with none has no returning-customer rate
+	 */
+	returning_customer_rate: Numeric | null;
+	/**
+	 * `INTEGER`. Repeat customers within `customers`
+	 */
+	returning_customers: Numeric;
+	/**
+	 * `MONEY`. NEGATIVE in normal operation — measured negative on 557 of 1,201 days. This is the measure most responsible for a settled day's numbers moving later, and therefore for the re-fetch window in the table header
+	 */
+	returns: Numeric;
+	/**
+	 * The Shopify shop id this row came from — see `shopify_products_v1__Product.ts`. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 */
+	shopId: Int8;
+	/**
+	 * `MONEY`. Measured negative on 7 of 1,201 days, so the column admits either sign
+	 */
+	taxes: Numeric;
+	/**
+	 * `MONEY`. Zero on every one of the 1,201 measured days on this store
+	 */
+	tips: Numeric;
+	/**
+	 * `MONEY`. The headline figure the merchant sees in their own admin, and the one that DOES NOT equal the sum of `shopify_orders_v1__Order.totalPriceShopAmount` — see the table header before reconciling anything against it. Exact decimal string; up to 3 decimal places measured
+	 */
+	total_sales: Numeric;
+	/**
+	 * OUR row bookkeeping, and it means WHEN THIS DAY'S NUMBERS LAST CHANGED — not when we last looked at them. The writer keeps `dbRunUpsert`'s DEFAULT distinct guard, so a day re-read inside the re-fetch window whose measures all match is not rewritten at all. That is the opposite of every other Shopify tenant table, where the marker must be stamped unconditionally because a whole-set delete runs against it; NOTHING IN THIS FAMILY DELETES ON IT, which is what makes the useful meaning available. Reading it tells you which days are still being revised and how long after the fact — the measurement behind the re-fetch window, available continuously rather than from a one-off diff. Not a Shopify field
+	 */
+	updatedAt: InstantColumn;
+}
+
+/**
+ * One shop-local day of the Shopify ShopifyQL `sessions` dataset per (shopId,
+ * day). A TIME SERIES, upserted over a trailing re-fetch window and never
+ * deleted. Sessions and pageviews cannot be derived from orders, which is why
+ * this family exists. Every measure is an exact decimal string in NUMERIC;
+ * rates are unit fractions and average_session_duration is in seconds.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_shopify_reports_v1__SessionsDaily {
+	/**
+	 * `SECOND_DURATION`: a duration in SECONDS as an exact decimal string, measured at up to 15 decimal places. The only column in this family whose unit is not money, a count or a fraction, so a display that treats it as one of those will be wrong by orders of magnitude. NULLABLE because it is a MEAN over `sessions`, so a day with none has no average
+	 */
+	average_session_duration: Numeric | null;
+	/**
+	 * `PERCENT` as a UNIT FRACTION: 0.7658102766798419 means 76.58%. Measured at up to 17 decimal places. NULLABLE because it is a quotient over `sessions`: a day with no sessions has no bounce rate, and that is not the same fact as a bounce rate of zero
+	 */
+	bounce_rate: Numeric | null;
+	/**
+	 * `PERCENT` as a UNIT FRACTION, measured at up to 19 decimal places. The SOURCE'S ratio — do not recompute it from the columns beside it, and do not confuse it with orders per session computed against `shopify_reports_v1__SalesDaily`, whose order count uses a different inclusion rule again. NULLABLE for the same reason as `bounce_rate`
+	 */
+	conversion_rate: Numeric | null;
+	/**
+	 * OUR row bookkeeping: when this day was FIRST written. Excluded from the upsert's update columns. Not a Shopify field
+	 */
+	createdAt: InstantColumn;
+	/**
+	 * The ShopifyQL `day` dimension: a SHOP-LOCAL calendar day as `YYYY-MM-DD`, measured well-formed on 1,201/1,201 rows. `Schema.String` plus postgresType DATE and NOT `Schema.DateTimeUtc`, for the reason given in `shopify_reports_v1__SalesDaily.ts`. Joins to `shopify_reports_v1__SalesDaily.day` for the same shop, which is how sessions and sales are read together
+	 */
+	day: PlainDateColumn;
+	/**
+	 * `INTEGER`. Note the spelling — the dataset rejects `page_views`
+	 */
+	pageviews: Numeric;
+	/**
+	 * `INTEGER`, carried as an exact decimal string in NUMERIC like every other measure here. The measure this whole family was built to reach: it cannot be derived from orders
+	 */
+	sessions: Numeric;
+	/**
+	 * `INTEGER`. The last funnel step. It is NOT the same as `shopify_reports_v1__SalesDaily.orders` and the two should not be expected to agree: one counts sessions, the other counts orders on ShopifyQL's own inclusion rule
+	 */
+	sessions_that_completed_checkout: Numeric;
+	/**
+	 * `INTEGER`. The second funnel step
+	 */
+	sessions_that_reached_checkout: Numeric;
+	/**
+	 * `INTEGER`. The first step of the funnel this table records
+	 */
+	sessions_with_cart_additions: Numeric;
+	/**
+	 * The Shopify shop id this row came from — see `shopify_products_v1__Product.ts`. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 */
+	shopId: Int8;
+	/**
+	 * OUR row bookkeeping, and it means WHEN THIS DAY'S NUMBERS LAST CHANGED rather than when they were last read — the writer keeps `dbRunUpsert`'s default distinct guard. See `shopify_reports_v1__SalesDaily.ts` for why that is safe here and required to be otherwise everywhere else in this connector. On this dataset a completed day has never been observed to change at all, so an `updatedAt` far behind the day itself is the NORMAL state here and an unusual one in the sales table. Not a Shopify field
+	 */
+	updatedAt: InstantColumn;
+}
+
+/**
+ * One row per Shopify store naming it: myshopify domain, trading name,
+ * timezone and shop currency, keyed by the Shopify shop id. Join any other
+ * shopify_* table to this one on shopId to put a name to the store its rows
+ * came from. Upserted by each shop refresh and never deleted.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_shopify_shop_v1__Shop {
+	/**
+	 * When this row was first written by a `shop` refresh
+	 */
+	createdAt: InstantColumn;
+	/**
+	 * SOURCE: `Shop.currencyCode`. The currency of every scalar Money field Shopify returns WITHOUT one, notably `shopify_products_v1__ProductVariant.price`. It does NOT apply to an order's amounts: those carry their own code each, and 188 of 50,085 orders were measured in a second currency
+	 */
+	currencyCode: string;
+	/**
+	 * SOURCE: `Shop.ianaTimezone`. The zone every shop-local calendar day in this schema is reckoned in, notably the `day` column of the two `shopify_reports_v1__*` tables
+	 */
+	ianaTimezone: string;
+	/**
+	 * SOURCE: `Shop.myshopifyDomain`, the canonical `*.myshopify.com` host. Usually the most recognisable of the three identifiers, and the one the Admin API is called on. It is Shopify's own answer rather than the value configured on the connector; the two are compared on every refresh and a disagreement is logged. UNLIKE `shopId` IT IS NOT PERMANENT — a merchant may change it once — which is why it is not the key
+	 */
+	myshopifyDomain: string;
+	/**
+	 * SOURCE: `Shop.name`, the store's trading name as the merchant set it — what a person means by the name of the shop. It is merchant-editable and NOT an identifier: two stores can share one, and it can change without anything else changing
+	 */
+	name: string;
+	/**
+	 * THE KEY, and the value every other `shopify_*` table in this schema carries — join on it to find out which store a row is from. It is the decimal tail of `gid://shopify/Shop/<digits>`; the full GID is not stored, because nothing here rebuilds one. See `shopify_products_v1__Product.ts`. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 */
+	shopId: Int8;
+	/**
+	 * When the most recent successful `shop` refresh wrote this row. NOT a whole-set refresh marker: nothing in this table is ever deleted for being stamped earlier than a run
+	 */
+	updatedAt: InstantColumn;
+}
+
+/**
  * One The Fulfillment Lab (GFS) advance shipping notice header per
  * (connectorId, id), with carrier, tracking, container and the expected,
  * received and delivered quantities. An ASN carries no creation timestamp of
@@ -5035,6 +6114,18 @@ export interface DB {
 	databrill_schema_version: DbTable_databrill_schema_version;
 	fx_ecb_rate_history: DbTable_fx_ecb_rate_history;
 	fx_ecb_rate_latest: DbTable_fx_ecb_rate_latest;
+	shopify_customers_v1__Customer: DbTable_shopify_customers_v1__Customer;
+	shopify_discounts_v1__Discount: DbTable_shopify_discounts_v1__Discount;
+	shopify_discounts_v1__DiscountRedeemCode: DbTable_shopify_discounts_v1__DiscountRedeemCode;
+	shopify_inventory_v1__InventoryLevel: DbTable_shopify_inventory_v1__InventoryLevel;
+	shopify_locations_v1__Location: DbTable_shopify_locations_v1__Location;
+	shopify_orders_v1__Order: DbTable_shopify_orders_v1__Order;
+	shopify_orders_v1__OrderLineItem: DbTable_shopify_orders_v1__OrderLineItem;
+	shopify_products_v1__Product: DbTable_shopify_products_v1__Product;
+	shopify_products_v1__ProductVariant: DbTable_shopify_products_v1__ProductVariant;
+	shopify_reports_v1__SalesDaily: DbTable_shopify_reports_v1__SalesDaily;
+	shopify_reports_v1__SessionsDaily: DbTable_shopify_reports_v1__SessionsDaily;
+	shopify_shop_v1__Shop: DbTable_shopify_shop_v1__Shop;
 	tfl_asns_v1__Asn: DbTable_tfl_asns_v1__Asn;
 	tfl_asns_v1__AsnItem: DbTable_tfl_asns_v1__AsnItem;
 	tfl_inventorySummary_v1__ProductWarehouse: DbTable_tfl_inventorySummary_v1__ProductWarehouse;

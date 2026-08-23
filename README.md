@@ -158,10 +158,11 @@ exposed, so the rotation can be scheduled rather than emergency-run.
 ## Runtime requirements
 
 Values come back as `Temporal` objects, so the runtime needs `Temporal`.
-It is native in Deno and in Node 26+. On Node 24 and on Bun it is not yet
-built in: load a polyfill before connecting, `import "temporal-polyfill/global"`,
-or `createDb()` throws a clear error explaining exactly that at connection
-time rather than a bare `ReferenceError` on your first row read.
+Newer runtimes have it built in; check yours with
+`typeof globalThis.Temporal`. Where it is missing, load a polyfill before
+connecting, `import "temporal-polyfill/global"`, or `createDb()` throws a
+clear error explaining exactly that at connection time rather than a bare
+`ReferenceError` on your first row read.
 
 TypeScript needs the `Temporal` type declarations too, which is a separate
 question from whether your runtime has the object:
@@ -172,9 +173,9 @@ question from whether your runtime has the object:
 - TypeScript 5.x and 6.x do not have that lib at all, so the setting above
   is not available to you. Install `temporal-polyfill` and
   `import "temporal-polyfill/global"` — it supplies the global type
-  declarations along with the runtime object. Node 26 users who do not
-  need the runtime polyfill still need this import (or a TypeScript 7
-  upgrade) to get the types.
+  declarations along with the runtime object. A runtime that already has
+  `Temporal` still needs this import (or a TypeScript 7 upgrade) to get the
+  types.
 
 ## Value mapping
 

@@ -129,6 +129,24 @@ Deno.test("canonical - the family is resolved per country before grouping", () =
 	assertStringIncludes(compiled.sql, `left join "brand_config_amazon_asin"`);
 });
 
+Deno.test("canonical - the family relation is joined only when the request uses it", () => {
+	const asin = compileLevelQuery(db, paramsFor("ASIN"));
+	assertEquals(asin.sql.includes(`brand_config_amazon_asin`), false);
+
+	const filtered = compileLevelQuery(
+		db,
+		paramsFor("ASIN", {
+			request: {
+				level: "ASIN",
+				timeGranularity: "DAY",
+				window: { kind: "explicit", ...WINDOW },
+				families: ["widgets"],
+			},
+		}),
+	);
+	assertStringIncludes(filtered.sql, `left join "brand_config_amazon_asin"`);
+});
+
 Deno.test("canonical - a non-additive measure appears only at the source grain", () => {
 	const skuMeasures = measuresForLevel(AMAZON_REPORT_SALES_AND_TRAFFIC, "SKU").map((measure) => measure.name);
 	assert(skuMeasures.includes("buyBoxPercentage"));
