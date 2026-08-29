@@ -1,3 +1,4 @@
+// @ts-types="npm:@types/pg@^8.16.0"
 import { types } from "pg";
 import { temporalOidParsers } from "./temporalOidParsers.ts";
 
@@ -29,6 +30,31 @@ export const pgTypeParsers: Readonly<
 > = temporalOidParsers;
 
 /**
+ * The `types` object `createDb()` hands to `pg`'s `Pool`.
+ *
+ * Written out rather than declared as `typeof types.getTypeParser`, which is
+ * what it used to be, for two reasons. That `typeof` published a NOMINAL enum
+ * (`TypeId`) from `pg-types` — a runtime package, floated at `^2.2.0` by
+ * `@types/pg` while `pg` itself pins exactly `2.2.0` — through this package's
+ * type surface. And `deno doc` emits a `typeof` query as a `typeQuery` node
+ * carrying no `resolution` at all, so a leak gate that matches on import
+ * resolutions cannot see it: the naive gate would have called the package clean
+ * while this line was leaking. Hence the second rule in the gate, and hence this
+ * declaration.
+ *
+ * `oid: number` rather than `pg-types`' `TypeId`: it is what the parser table is
+ * keyed on and what {@link getTypeParser} below already takes, and the result
+ * stays assignable to `pg`'s own `CustomTypesConfig`.
+ *
+ * Named and exported rather than written inline on {@link makePgTypes}'s return
+ * type, because `makePgTypes` exists for customers who build their own dialect
+ * and they need to be able to write the type down.
+ */
+export interface PgTypeOverrides {
+	readonly getTypeParser: (oid: number, format?: "text" | "binary") => unknown;
+}
+
+/**
  * Build the object to hand to a `pg` `Pool` as its `types` option.
  *
  * Per-pool, never global: `pg.types.setTypeParser` would rewrite parsing for
@@ -36,7 +62,7 @@ export const pgTypeParsers: Readonly<
  * nothing about. Overriding `getTypeParser` on one pool's config affects only
  * that pool, and delegates every other OID to `pg`'s own defaults.
  */
-export function makePgTypes(): { readonly getTypeParser: typeof types.getTypeParser } {
+export function makePgTypes(): PgTypeOverrides {
 	return { getTypeParser };
 }
 

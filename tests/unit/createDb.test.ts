@@ -9,7 +9,9 @@
  */
 
 import { assert, assertEquals, assertThrows } from "jsr:@std/assert@1.0.19";
-import { createDb } from "../../src/createDb.ts";
+// @ts-types="npm:@types/pg@^8.16.0"
+import { Pool } from "pg";
+import { createDb, type TenantPool } from "../../src/createDb.ts";
 import { TESTING_tenantSchema1 } from "../testConstants.ts";
 
 /** Never connected to; the pool stays idle until a query asks for a client. */
@@ -49,18 +51,62 @@ Deno.test("createDb - destroy() is idempotent", async () => {
 	assert(tenant.pool.ended);
 });
 
-Deno.test("createDb - the pool has an error listener, so an idle-client failure cannot crash the process", () => {
+Deno.test("createDb - the pool has an error listener, so an idle-client failure cannot crash the process", async () => {
 	// `pg-pool` emits `'error'` on the pool itself when an idle client dies —
 	// a database restart, a pooler recycling a backend. `EventEmitter` throws on
 	// an unhandled `'error'`, so without a listener that becomes an uncaught
 	// exception thrown from inside this library.
 	const tenant = createDb(UNUSED_URL);
+	// `listenerCount` and `emit` are `EventEmitter` internals, deliberately absent
+	// from the published `TenantPool` — they prove an internal guarantee this
+	// package does not promise callers. Narrowing back to the concrete class is how
+	// this test reaches them without widening the published type, and it also
+	// checks the claim `TenantDb.pool`'s docblock makes: the value really is `pg`'s
+	// `Pool`, and only the published type is narrowed. A cast would assert that
+	// claim; `instanceof` verifies it.
+	assert(tenant.pool instanceof Pool, "the exposed pool really is a pg.Pool");
 	try {
 		assert(tenant.pool.listenerCount("error") > 0, "the library-owned pool must handle its own 'error' event");
 		// Emitting must not throw. Were there no listener, this line would.
 		tenant.pool.emit("error", new Error("connection terminated unexpectedly"));
 	} finally {
-		tenant.pool.end();
+		// Teardown goes through `destroy()`, which is the whole reason `TenantPool`
+		// declares no `end()`; it calls `pool.end()` internally and memoizes it.
+		await tenant.destroy();
+	}
+});
+
+Deno.test("createDb - a caller's own 'error' listener is added, not substituted for the library's", async () => {
+	// `TenantPool` publishes `on` for exactly one purpose, and its docblock makes
+	// a promise about it: "Attach your own idle-client error listener; it does not
+	// displace this package's." Nothing else exercises either the published `on`
+	// signature or that promise, so without this test both are prose. The
+	// swallowing listener `createDb` installs is what makes the promise load
+	// bearing — a caller who lost it would get no visibility at all.
+	const tenant = createDb(UNUSED_URL);
+	// Narrowed for the same reason as the test above: `listenerCount` and `emit`
+	// are `EventEmitter` internals `TenantPool` deliberately does not publish.
+	assert(tenant.pool instanceof Pool, "the exposed pool really is a pg.Pool");
+	const libraryListeners = tenant.pool.listenerCount("error");
+	try {
+		const seen: string[] = [];
+		// Deliberately attached through the PUBLISHED `TenantPool`, not through the
+		// narrowing above: `pg`'s own `on` overloads would type-check even if the
+		// signature this package publishes were unusable to a caller.
+		const published: TenantPool = tenant.pool;
+		published.on("error", (error) => {
+			seen.push(error.message);
+		});
+
+		assertEquals(
+			tenant.pool.listenerCount("error"),
+			libraryListeners + 1,
+			"a caller's listener must be added alongside the library's, not replace it",
+		);
+		tenant.pool.emit("error", new Error("connection terminated unexpectedly"));
+		assertEquals(seen, ["connection terminated unexpectedly"], "the caller's own listener must actually run");
+	} finally {
+		await tenant.destroy();
 	}
 });
 

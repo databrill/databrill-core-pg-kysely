@@ -1,6 +1,7 @@
 import { Kysely, PostgresDialect } from "kysely";
 import type { ReadonlyKysely } from "kysely/readonly";
-import { Pool, type PoolConfig } from "pg";
+// @ts-types="npm:@types/pg@^8.16.0"
+import { Pool } from "pg";
 import type { DB } from "./db.ts";
 import { makePgTypes } from "./pgTypeParsers.ts";
 import { temporalParameterPlugin } from "./temporalParameterPlugin.ts";
@@ -8,11 +9,67 @@ import { requireTemporal } from "./temporalValues.ts";
 import type { WritableDB } from "./WritableDB.ts";
 
 /**
- * Options for {@link createDb}. Everything `pg`'s `Pool` accepts, minus `types`,
- * which this package owns — see {@link makePgTypes} for why overriding it would
- * make the published types wrong.
+ * Options for {@link createDb}.
+ *
+ * Declared outright rather than derived from `pg`'s `PoolConfig`, so `@types/pg`
+ * — and, through its `ssl` and `stream` fields, `@types/node` — stays out of this
+ * package's published types. A derived interface also has no version story: a
+ * DefinitelyTyped PATCH release silently widens a `0.x` contract. That is not
+ * hypothetical. `enableChannelBinding`, `sslnegotiation` and `pipeline` are
+ * absent from `@types/pg@8.21.0` and present in `8.23.1`, so `extends
+ * Omit<PoolConfig, "types">` would have published three new option names on a
+ * lockfile refresh, with nothing to review and no version to bump.
+ *
+ * Every field here is one `createDb()` genuinely forwards to `new Pool()` and
+ * one a customer of a tenant database client has a reason to set. Adding an
+ * optional field later is a compatible change and removing one is not, so this
+ * starts narrow.
+ *
+ * Deliberately excluded, and why — this list is the decision, so a future reader
+ * weighing whether to add a field reads it here:
+ *
+ * - `types` — the package owns it; see {@link makePgTypes}.
+ * - `Client`, `stream`, `log`, `Promise`, `onConnect`, `verify` —
+ *   driver-internal escape hatches. Handing a customer `Client` lets them swap
+ *   the client class and silently lose the type parsers that make the published
+ *   types true, which is the single thing this package exists to guarantee.
+ * - `keepAlive`, `keepAliveInitialDelayMillis`, `options`, `client_encoding`,
+ *   `fallback_application_name` — plausible but unused, and every name published
+ *   from a 0.x package is a name that has to keep working. Add on request.
+ * - `enableChannelBinding`, `sslnegotiation`, `pipeline` — the very options whose
+ *   arrival between `@types/pg@8.21.0` and `8.23.1` is the evidence above. They
+ *   are declared by the types this package currently resolves, but the runtime
+ *   floor is `pg@^8.16.3`, which does not have them, and DefinitelyTyped is not
+ *   what decides that. Declaring them would promise options this package cannot
+ *   promise `pg` accepts.
  */
-export interface CreateDbOptions extends Omit<PoolConfig, "types"> {
+export interface CreateDbOptions {
+	// where to connect
+	readonly connectionString?: string;
+	readonly host?: string;
+	readonly port?: number;
+	readonly user?: string;
+	readonly password?: string | (() => string | Promise<string>);
+	readonly database?: string;
+	readonly ssl?: boolean | TenantTlsOptions;
+
+	// pool sizing and lifetime
+	readonly max?: number;
+	readonly min?: number;
+	readonly idleTimeoutMillis?: number;
+	readonly connectionTimeoutMillis?: number;
+	readonly maxUses?: number;
+	readonly maxLifetimeSeconds?: number;
+	readonly allowExitOnIdle?: boolean;
+
+	// what the server is told
+	readonly application_name?: string;
+	readonly statement_timeout?: number | false;
+	readonly query_timeout?: number;
+	readonly idle_in_transaction_session_timeout?: number;
+	readonly lock_timeout?: number;
+
+	// this package's own
 	/**
 	 * The Postgres schema holding the tenant tables.
 	 *
@@ -28,6 +85,56 @@ export interface CreateDbOptions extends Omit<PoolConfig, "types"> {
 	 * regardless of how the connection is pooled.
 	 */
 	readonly schema?: string;
+}
+
+/**
+ * The TLS options this package forwards, declared so `node:tls` stays out of the
+ * published types.
+ *
+ * One consequence is reviewer-visible and deliberate: `ca`, `cert` and `key` are
+ * `string`, while `pg` itself accepts `string | Buffer | (string | Buffer)[]`. A
+ * customer holding a CA as a `Buffer` must `.toString()` it. Admitting `Buffer`
+ * would re-import `@types/node`, which is half of what declaring these options
+ * removes.
+ */
+export interface TenantTlsOptions {
+	readonly rejectUnauthorized?: boolean;
+	readonly ca?: string;
+	readonly cert?: string;
+	readonly key?: string;
+	readonly servername?: string;
+}
+
+/**
+ * The subset of the underlying `pg` pool this package exposes.
+ *
+ * Declared structurally rather than as `pg`'s `Pool` so `@types/pg` stays out of
+ * the published types. `connect()` and `end()` are deliberately absent: teardown
+ * goes through `destroy()`, and a checked-out client the caller has to remember
+ * to release is not an escape hatch worth publishing.
+ *
+ * Kysely's own `PostgresPool` was considered and rejected: it is
+ * `{ Client?; connect(); end(); options }` — exactly the two members this
+ * package tells callers not to use, and none of the three it tells them they
+ * may.
+ */
+export interface TenantPool {
+	readonly totalCount: number;
+	readonly idleCount: number;
+	readonly waitingCount: number;
+	/** True once the pool has been drained by `destroy()`. */
+	readonly ended: boolean;
+	/** Run SQL this package cannot express. */
+	query(text: string, values?: readonly unknown[]): Promise<TenantPoolResult>;
+	/** Attach your own idle-client error listener; it does not displace this package's. */
+	on(event: "error", listener: (error: Error) => void): void;
+}
+
+/** What {@link TenantPool.query} resolves to. */
+export interface TenantPoolResult {
+	readonly command: string;
+	readonly rowCount: number | null;
+	readonly rows: readonly Record<string, unknown>[];
 }
 
 /**
@@ -59,9 +166,11 @@ export interface TenantDb {
 	 *
 	 * Exposed as an escape hatch for connection metrics and for SQL this package
 	 * cannot express. Do not call `end()` on it directly; use
-	 * {@link TenantDb.destroy}.
+	 * {@link TenantDb.destroy} — which {@link TenantPool} now enforces rather than
+	 * merely asking for, since it declares no `end()` at all. The value really is
+	 * `pg`'s `Pool`; only the published type is narrowed.
 	 */
-	readonly pool: Pool;
+	readonly pool: TenantPool;
 
 	/**
 	 * Close the shared pool. Idempotent, and invalidates BOTH surfaces — there is

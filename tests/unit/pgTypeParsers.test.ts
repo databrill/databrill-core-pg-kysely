@@ -12,6 +12,7 @@
 
 import { assert, assertEquals } from "jsr:@std/assert@1.0.19";
 import { Kysely, PostgresDialect, sql } from "kysely";
+// @ts-types="npm:@types/pg@^8.16.0"
 import { Pool, types as pgTypes } from "pg";
 import { makePgTypes, pgTypeParsers } from "../../src/pgTypeParsers.ts";
 import { temporalParameterPlugin } from "../../src/temporalParameterPlugin.ts";

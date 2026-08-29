@@ -37,9 +37,16 @@
 // `compareSchemaVersions`, the individual Temporal parsers, `isTemporalValue`,
 // `temporalToPostgres` — stay unexported, because every name published from a
 // 0.x package is a name that has to keep working.
+//
+// `TenantTlsOptions`, `TenantPool`, `TenantPoolResult` and `PgTypeOverrides` are
+// here under that same rule rather than in spite of it: each is this package's
+// own declaration standing in for a type that used to come from `@types/pg`, and
+// each is reachable from a signature a customer has to be able to write down.
+// An unexported one would be a member of a public interface that nobody can
+// name.
 
 export { createDb } from "./createDb.ts";
-export type { CreateDbOptions, TenantDb } from "./createDb.ts";
+export type { CreateDbOptions, TenantDb, TenantPool, TenantPoolResult, TenantTlsOptions } from "./createDb.ts";
 export { checkSchemaCompatibility } from "./checkSchemaCompatibility.ts";
 export type { SchemaCompatibility, SchemaCompatibilityLevel } from "./checkSchemaCompatibility.ts";
 
@@ -47,6 +54,7 @@ export type { SchemaCompatibility, SchemaCompatibilityLevel } from "./checkSchem
 // three are what make the published types true, on the read side and the write
 // side respectively.
 export { makePgTypes, pgTypeParsers } from "./pgTypeParsers.ts";
+export type { PgTypeOverrides } from "./pgTypeParsers.ts";
 export { temporalParameterPlugin } from "./temporalParameterPlugin.ts";
 export { requireTemporal, UnrepresentableTemporalValueError } from "./temporalValues.ts";
 

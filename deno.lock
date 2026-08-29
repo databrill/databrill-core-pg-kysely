@@ -4,7 +4,7 @@
     "jsr:@std/assert@1.0.19": "1.0.19",
     "jsr:@std/internal@^1.0.12": "1.0.14",
     "jsr:@std/yaml@1": "1.1.2",
-    "npm:@types/pg@^8.15.0": "8.20.0",
+    "npm:@types/pg@^8.16.0": "8.23.1",
     "npm:kysely@0.29": "0.29.4",
     "npm:pg@^8.16.3": "8.23.0"
   },
@@ -23,14 +23,14 @@
     }
   },
   "npm": {
-    "@types/node@26.1.2": {
-      "integrity": "sha512-Vu4a5UFA9rIIFJ7rB/Vaafh9lrCQszopTCx6KjFboXTGQbPNasehVR5TEiithSDGyd1DEiUByggTZsg8jukeIg==",
+    "@types/node@26.2.0": {
+      "integrity": "sha512-5IviulTZeRNp2vAJ514cc/HUlY5nZ9fCbq9DMyC52BrhFZACo3nI0R7qBxhQmo/d27NFe96ur/b7Wwxklda+kg==",
       "dependencies": [
         "undici-types"
       ]
     },
-    "@types/pg@8.20.0": {
-      "integrity": "sha512-bEPFOaMAHTEP1EzpvHTbmwR8UsFyHSKsRisLIHVMXnpNefSbGA1bD6CVy+qKjGSqmZqNqBDV2azOBo8TgkcVow==",
+    "@types/pg@8.23.1": {
+      "integrity": "sha512-fKVHpikPdg4GKks3JuLEhvwSyvwzF23hnabPy6DD8ljVbC7+6J5dQzdv4arV6jqq57djnMgs1HKBxX4P8aBI3A==",
       "dependencies": [
         "@types/node",
         "pg-protocol",
@@ -114,7 +114,6 @@
   },
   "workspace": {
     "dependencies": [
-      "npm:@types/pg@^8.15.0",
       "npm:kysely@0.29",
       "npm:pg@^8.16.3"
     ]

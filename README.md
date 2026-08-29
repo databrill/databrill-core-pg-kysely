@@ -228,6 +228,42 @@ serializer JSON-stringifies a Temporal value into a quoted string that
 Postgres rejects. Both problems are silent until they are not — the query
 type-checks and then hands back the wrong runtime shape.
 
+## Connection options
+
+`createDb()` takes either a connection string or an options object:
+
+```ts
+createDb(Deno.env.get("DATABRILL_DATABASE_URL")!);
+
+createDb({
+	connectionString: Deno.env.get("DATABRILL_DATABASE_URL"),
+	schema: "w123456789",
+	max: 10,
+	application_name: "reporting-worker",
+});
+```
+
+`CreateDbOptions` is a declared subset of what `pg` accepts rather than
+a re-export of its `PoolConfig`. It covers where to connect
+(`connectionString`, or `host` / `port` / `user` / `password` /
+`database`, plus `ssl`), pool sizing and lifetime (`max`, `min`,
+`idleTimeoutMillis`, `connectionTimeoutMillis`, `maxUses`,
+`maxLifetimeSeconds`, `allowExitOnIdle`), what the server is told
+(`application_name`, `statement_timeout`, `query_timeout`,
+`idle_in_transaction_session_timeout`, `lock_timeout`), and this
+package's own `schema`. The driver's internal hooks are not forwarded:
+replacing the client class would lose the type parsers that make the
+published types true, which is the one thing this package exists to
+guarantee.
+
+Adding an optional option later is a compatible change, so if you need
+one that is not there, ask.
+
+`ssl` takes `true` or a `TenantTlsOptions` object — `rejectUnauthorized`,
+`ca`, `cert`, `key`, `servername`. The three certificate fields are
+`string` where `pg` also accepts a `Buffer`, so a certificate you read
+from disk as bytes needs `.toString()` before you pass it.
+
 ## The `schema` option
 
 `createDb({ schema, ... })` targets a Postgres schema — `w123456789` for a
@@ -239,6 +275,34 @@ not forwarded by every connection pooler, and a per-session `SET` does
 not survive transaction-mode pooling, where each transaction may land on
 a different backend. Qualifying the SQL itself works regardless of how
 the connection is pooled.
+
+## The pool
+
+`createDb()` also returns `pool`, the connection pool both surfaces
+share, for connection metrics and for SQL this package cannot express:
+
+```ts
+const { db, pool, destroy } = createDb(/* ... */);
+
+console.log(pool.totalCount, pool.idleCount, pool.waitingCount);
+const { rows } = await pool.query("select now() as at");
+
+// Your own listener for errors on idle clients; it does not displace
+// the one this package attaches.
+pool.on("error", (error) => console.warn(error));
+
+await destroy();
+```
+
+It is typed as `TenantPool`, a type this package declares rather than
+`pg`'s own `Pool`, so nothing you import from here obliges you to
+install `@types/pg`. It carries the three connection counts, `ended`,
+`query()` and `on("error", ...)`, and nothing else.
+
+`connect()` and `end()` are deliberately absent. Close through
+`destroy()`, which drains the pool once and invalidates both surfaces —
+there is one pool, so there is one teardown. If you need a member
+`TenantPool` does not carry, ask; adding one is a compatible change.
 
 ## Schema compatibility
 
