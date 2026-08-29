@@ -1,4 +1,4 @@
-// @ts-types="npm:@types/pg@^8.16.0"
+// @ts-types="./pgMinimal.d.ts"
 import { types } from "pg";
 import { temporalOidParsers } from "./temporalOidParsers.ts";
 

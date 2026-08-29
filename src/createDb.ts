@@ -1,6 +1,6 @@
 import { Kysely, PostgresDialect } from "kysely";
 import type { ReadonlyKysely } from "kysely/readonly";
-// @ts-types="npm:@types/pg@^8.16.0"
+// @ts-types="./pgMinimal.d.ts"
 import { Pool } from "pg";
 import type { DB } from "./db.ts";
 import { makePgTypes } from "./pgTypeParsers.ts";
