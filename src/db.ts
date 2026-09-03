@@ -323,6 +323,28 @@ export interface DbTable_amazon_browse_node_attribute {
 }
 
 /**
+ * Amazon's browse tree guide query for a browse node, one row per
+ * (marketplace_code, node_id): the query string as published, the same query
+ * parsed into a map of field name to values, and the item-type keywords
+ * hoisted out of it — which are the input to the product-type lookup in
+ * amazon_product_type_keyword. version records the guide worksheet the row
+ * came from. Marketplace reference data, not client data.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amazon_browse_node_query {
+	created_at: InstantColumn;
+	data: Json | null;
+	deleted_at: InstantColumn | null;
+	item_type_keywords: string[] | null;
+	marketplace_code: string;
+	node_id: Int8;
+	query: string;
+	updated_at: InstantColumn;
+	version: string | null;
+}
+
+/**
  * Reference table of the countries Amazon operates in: one row per ISO 3166-1
  * alpha-2 country code, with its display name, region and time zone.
  *
@@ -337,6 +359,19 @@ export interface DbTable_amazon_country {
 	updated_at: InstantColumn;
 }
 
+/**
+ * DEPRECATED — do not build on this view. Flattens
+ * amzspapi_fbaInventory_v1__InventorySummary into columns: one row per
+ * (merchant_id, marketplace_id, sku) with the fulfillable, inbound working,
+ * inbound shipped, inbound receiving, reserved, researching and unfulfillable
+ * quantity breakdowns pulled out of the stored document. This documentation
+ * does not match the view: `stores`, `created_at` and `updated_at` are listed
+ * here but do not exist in the database, `last_updated_time` is TIMESTAMPTZ
+ * rather than TEXT, and the column order differs. Query
+ * amzspapi_fbaInventory_v1__InventorySummary directly instead.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
 export interface DbView_amazon_fba_inventory_summary {
 	asin: string | null;
 	carrier_damaged: number | null;
@@ -512,6 +547,16 @@ export interface DbTable_amazon_merchant {
 	updatedAt: InstantColumn;
 }
 
+/**
+ * Daily order-item totals per SKU from amzspapi_orders_v0__OrderItem: one row
+ * per (local date, merchant_id, marketplace_id, sku, asin, currency), with the
+ * order count, quantities ordered and shipped, and price, tax and promotion
+ * totals both including and excluding tax. The date is the marketplace's local
+ * date — the marketplace time zone, falling back to the country's and then to
+ * UTC. Lines with a zero ordered quantity are excluded.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
 export interface DbView_amazon_orders_by_day_and_sku {
 	asin: string | null;
 	avg_line_price: Numeric | null;
@@ -533,6 +578,23 @@ export interface DbView_amazon_orders_by_day_and_sku {
 	total_quantity_ordered: Int8 | null;
 	total_quantity_shipped: Int8 | null;
 	total_tax: Numeric | null;
+}
+
+/**
+ * Amazon's mapping from an item-type keyword to the product types it belongs
+ * to, one row per (marketplace_code, item_type_keyword, product_type). Built
+ * by looking up each distinct item-type keyword in amazon_browse_node_query.
+ * Marketplace reference data, not client data.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amazon_product_type_keyword {
+	created_at: InstantColumn;
+	deleted_at: InstantColumn | null;
+	item_type_keyword: string;
+	marketplace_code: string;
+	product_type: string;
+	updated_at: InstantColumn;
 }
 
 /**
@@ -1277,6 +1339,75 @@ export interface DbTable_amzagg_profit__orderItemProjectionState {
 }
 
 /**
+ * FBA inventory at the physical grain: one row per (merchant, marketplace,
+ * FNSKU), with the whole quantity tree flattened. Derived from
+ * amzspapi_fbaInventory_v1__InventorySummary, whose per-seller-SKU grain
+ * repeats a commingled pool once per label and overstates units by ~58%.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzfact_fnsku_fbaInventory {
+	/**
+	 * ASIN of the pool, denormalised to save a join on every rollup
+	 */
+	asin: string | null;
+	carrierDamagedQuantity: number | null;
+	/**
+	 * Item condition as the seller described it. Not part of the key; the writer reports a pool whose summaries disagree on it.
+	 */
+	condition: string | null;
+	/**
+	 * Digest over the quantity and identity state, used as the upsert's whereDistinct guard so an unchanged pool is not rewritten
+	 */
+	contentHash: string;
+	createdAt: InstantColumn;
+	customerDamagedQuantity: number | null;
+	defectiveQuantity: number | null;
+	distributorDamagedQuantity: number | null;
+	expiredQuantity: number | null;
+	fcProcessingQuantity: number | null;
+	/**
+	 * Amazon fulfillment network SKU — the physical pool. Equals the ASIN for commingled items.
+	 */
+	fnsku: string;
+	fulfillableQuantity: number | null;
+	inboundReceivingQuantity: number | null;
+	inboundShippedQuantity: number | null;
+	inboundWorkingQuantity: number | null;
+	/**
+	 * Marketplace the quantities were reported for; quantities are per marketplace
+	 */
+	marketplaceId: string;
+	/**
+	 * Amazon merchant (seller) id owning the pool
+	 */
+	merchantId: string;
+	/**
+	 * Instant the poll response reported this state, not our write clock
+	 */
+	observedAtPoll: InstantColumn | null;
+	/**
+	 * Instant the notification stream reported this state. Always null until that writer exists.
+	 */
+	observedAtStream: InstantColumn | null;
+	pendingCustomerOrderQuantity: number | null;
+	pendingTransshipmentQuantity: number | null;
+	researchingQuantityInLongTerm: number | null;
+	researchingQuantityInMidTerm: number | null;
+	researchingQuantityInShortTerm: number | null;
+	/**
+	 * Which writer last wrote this row. A literal union so a second source needs no DDL.
+	 */
+	source: string;
+	totalQuantity: number | null;
+	totalResearchingQuantity: number | null;
+	totalReservedQuantity: number | null;
+	totalUnfulfillableQuantity: number | null;
+	updatedAt: InstantColumn;
+	warehouseDamagedQuantity: number | null;
+}
+
+/**
  * What one ledger write covered and what it could not place, one row per
  * (merchantId, dateFirst, dateLast). Not a gating table: no status, no READY
  * check. It records the three things a run encountered that produced no
@@ -1484,6 +1615,47 @@ export interface DbTable_amzfact_ledger_transaction {
 	 * Amazon's own transactionType, carried as metadata rather than folded into an account name
 	 */
 	transactionType: string;
+}
+
+/**
+ * What a seller SKU points at: one row per (merchant, seller SKU) carrying
+ * FNSKU, ASIN and condition. Not keyed by marketplace — identity does not vary
+ * by marketplace, as measured across every observed pair.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzfact_sku_identity {
+	asin: string | null;
+	/**
+	 * Item condition as the seller described it
+	 */
+	condition: string | null;
+	/**
+	 * Digest over (fnsku, asin, condition), used as the upsert's whereDistinct guard so an unchanged identity is not rewritten
+	 */
+	contentHash: string;
+	createdAt: InstantColumn;
+	/**
+	 * The pool this label points at; joins to amzfact_fnsku_fbaInventory.fnsku
+	 */
+	fnsku: string | null;
+	/**
+	 * Amazon merchant (seller) id owning the SKU
+	 */
+	merchantId: string;
+	/**
+	 * Instant the poll response reported this identity, not our write clock
+	 */
+	observedAtPoll: InstantColumn | null;
+	/**
+	 * The seller's own SKU, as the inventory response reported it. May not exist as a listing.
+	 */
+	sku: string;
+	/**
+	 * Which writer last wrote this row. A literal union so a second source needs no DDL.
+	 */
+	source: string;
+	updatedAt: InstantColumn;
 }
 
 /**
@@ -2287,6 +2459,34 @@ export interface DbTable_amzreport_FBA_FEE_PREVIEW {
 }
 
 /**
+ * Inbound shipment noncompliance events Amazon reports against a shipment:
+ * delivery delays, labelling issues, carton quantity mismatches and tracking
+ * problems. One row per (merchant_id, issue_reported_at, fba_shipment_id,
+ * index), the index disambiguating several issues reported for one shipment at
+ * the same instant. North American reports carry more columns than European
+ * and Australian ones; everything outside the key and the promoted queryable
+ * columns is kept in doc, and product name is not stored.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzreport_FBA_INBOUND_NONCOMPLIANCE {
+	alert_status: string;
+	coaching_level: string;
+	created_at: InstantColumn;
+	doc: Json;
+	fba_shipment_id: string;
+	fulfillment_center_id: string;
+	index: number;
+	issue_reported_at: InstantColumn;
+	merchant_id: string;
+	problem_level: string;
+	problem_quantity: number;
+	problem_type: string;
+	shipment_creation_date: PlainDateColumn;
+	updated_at: InstantColumn;
+}
+
+/**
  * FBA inventory-health metrics per (merchant, marketplace, SKU) from
  * GET_FBA_INVENTORY_PLANNING_DATA. The report's many highly region-variable
  * columns are kept verbatim in doc under their original names. Scoped to one
@@ -2701,6 +2901,236 @@ export interface DbTable_amzreport_SETTLEMENT_V2__summary {
 }
 
 /**
+ * An AWD inbound order — the supplier-to-AWD leg — one row per (merchantId,
+ * orderId). Fetched once when the order is first seen and never refetched,
+ * because packagesToInbound is static packaging configuration; it is the only
+ * source of units-per-case and of the SKU-to-ASIN mapping for this leg.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_awd_v2024__InboundOrder {
+	externalReferenceId: string | null;
+	/**
+	 * When getInbound succeeded for this order
+	 */
+	lastFetchedAt: InstantColumn;
+	merchantId: string;
+	orderCreatedAt: InstantColumn | null;
+	/**
+	 * AWD inbound order ID (STAR- prefix)
+	 */
+	orderId: string;
+	/**
+	 * InboundStatus from the API; observed CONFIRMED/CLOSED/CANCELLED
+	 */
+	orderStatus: string;
+	originAddress: Json | null;
+	/**
+	 * DistributionPackageQuantity[]; source of unitsPerCase and SKU→ASIN mapping; JSONB
+	 */
+	packagesToInbound: Json;
+}
+
+/**
+ * An AWD inbound shipment on the supplier-to-AWD leg, one row per (merchantId,
+ * shipmentId). Rows are seeded from shipment listings, which touch lastSeenAt,
+ * then enriched by a detail call, which sets lastFetchedAt. A listed
+ * shipmentUpdatedAt moving past the stored value is what triggers the next
+ * detail fetch, including after the shipment has closed.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_awd_v2024__InboundShipment {
+	carrierCode: string | null;
+	destinationAddress: Json | null;
+	destinationRegion: string | null;
+	externalReferenceId: string | null;
+	lastFetchedAt: InstantColumn | null;
+	/**
+	 * Touched whenever the shipment appears in a listInboundShipments page
+	 */
+	lastSeenAt: InstantColumn;
+	merchantId: string;
+	/**
+	 * The AWD inbound order this shipment belongs to (STAR- prefix)
+	 */
+	orderId: string;
+	originAddress: Json | null;
+	shipBy: InstantColumn | null;
+	shipmentContainerQuantities: Json | null;
+	/**
+	 * API createdAt
+	 */
+	shipmentCreatedAt: InstantColumn;
+	/**
+	 * AWD shipment ID (STAR- prefix)
+	 */
+	shipmentId: string;
+	shipmentReceivedQuantity: Json | null;
+	/**
+	 * InboundShipmentStatus from the API
+	 */
+	shipmentStatus: string;
+	/**
+	 * API updatedAt; drives the detail-fetch decision
+	 */
+	shipmentUpdatedAt: InstantColumn;
+	trackingId: string | null;
+	warehouseReferenceId: string | null;
+}
+
+/**
+ * One SKU line on an AWD inbound shipment, one row per (merchantId,
+ * shipmentId, sku). Quantities are stored exactly as Amazon reports them,
+ * together with their unit, which is commonly CASES; product units are not
+ * materialised — derive them as quantity times unitsPerCase when the unit is
+ * CASES. unitsPerCase comes from the matching inbound order and is null until
+ * that order has been fetched. Both shortfalls and over-receipts occur in real
+ * data.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_awd_v2024__InboundShipmentSkuQuantity {
+	/**
+	 * As-reported expected quantity in expectedUnit
+	 */
+	expectedQuantity: number;
+	/**
+	 * InventoryUnitOfMeasurement of expectedQuantity
+	 */
+	expectedUnit: string;
+	merchantId: string;
+	receivedQuantity: number | null;
+	receivedUnit: string | null;
+	shipmentId: string;
+	sku: string;
+	unitsPerCase: number | null;
+}
+
+/**
+ * Amazon Warehousing and Distribution (AWD) on-hand inventory, one row per
+ * (merchantId, sku). Latest-only: each collection cycle overwrites the row and
+ * stamps capturedAt, so a SKU that has dropped out of the AWD listing is
+ * recognisable by a stale capturedAt. No history is kept.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_awd_v2024__Inventory {
+	availableDistributableQuantity: number | null;
+	/**
+	 * The listInventory cycle timestamp; stale rows have an old capturedAt
+	 */
+	capturedAt: InstantColumn;
+	merchantId: string;
+	replenishmentQuantity: number | null;
+	reservedDistributableQuantity: number | null;
+	sku: string;
+	/**
+	 * Total quantity in transit from the seller, not yet received at AWD
+	 */
+	totalInboundQuantity: number;
+	/**
+	 * Total quantity present in AWD distribution centers
+	 */
+	totalOnhandQuantity: number;
+}
+
+/**
+ * An AWD replenishment order — the AWD-to-FBA leg — one row per (merchantId,
+ * orderId). Built from the order listing alone, because the detail call
+ * returns the same object. Requested per-SKU quantities are in
+ * amzspapi_awd_v2024__ReplenishmentOrderProduct and the outbound shipment
+ * summaries in amzspapi_awd_v2024__ReplenishmentOutboundShipment.
+ * shippedProducts has been empty on every order seen, including successful
+ * ones, so nothing relies on it.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_awd_v2024__ReplenishmentOrder {
+	confirmedOn: InstantColumn | null;
+	distributionIneligibleReasons: Json | null;
+	eligibleProducts: Json | null;
+	/**
+	 * Touched whenever the order appears in a listReplenishmentOrders page
+	 */
+	lastSeenAt: InstantColumn;
+	merchantId: string;
+	/**
+	 * API createdAt
+	 */
+	orderCreatedAt: InstantColumn;
+	/**
+	 * Replenishment order ID (repl-<uuid>)
+	 */
+	orderId: string;
+	/**
+	 * API updatedAt; the walk watermark advances over it
+	 */
+	orderUpdatedAt: InstantColumn;
+	shippedProducts: Json | null;
+	/**
+	 * ReplenishmentOrderStatus; observed SUCCESS/INELIGIBLE/FAILURE/INVENTORY_OUTBOUND
+	 */
+	status: string;
+}
+
+/**
+ * One requested product line on an AWD replenishment order, one row per
+ * (merchantId, orderId, sku), so replenishment demand is joinable by SKU.
+ * quantity is the REQUESTED amount in single product units, unlike the
+ * inbound-shipment side, which reports cases. Amazon exposes no shipped
+ * quantity for this leg.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_awd_v2024__ReplenishmentOrderProduct {
+	merchantId: string;
+	/**
+	 * The owning replenishment order (repl-<uuid>)
+	 */
+	orderId: string;
+	/**
+	 * Requested quantity in single product units (not CASES)
+	 */
+	quantity: number;
+	sku: string;
+}
+
+/**
+ * An outbound shipment summary on an AWD replenishment order, one row per
+ * (merchantId, shipmentId) — the only record of the AWD-to-FBA shipping leg,
+ * which is why it is a table rather than JSON on the order. Summary-only by
+ * Amazon's design: these shipment ids are in a different namespace from
+ * inbound shipment ids and have no detail call, so no per-SKU quantities exist
+ * for this leg. DELIVERED and RECEIVED are the practical terminal states.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_awd_v2024__ReplenishmentOutboundShipment {
+	merchantId: string;
+	/**
+	 * The owning replenishment order (repl-<uuid>)
+	 */
+	orderId: string;
+	/**
+	 * API createdAt
+	 */
+	shipmentCreatedAt: InstantColumn;
+	/**
+	 * Outbound shipment ID (repl-ship-<uuid>); NOT fetchable via getInboundShipment
+	 */
+	shipmentId: string;
+	/**
+	 * OutboundShipmentStatus; DELIVERED/RECEIVED are the practical terminal states
+	 */
+	shipmentStatus: string;
+	/**
+	 * API updatedAt
+	 */
+	shipmentUpdatedAt: InstantColumn;
+}
+
+/**
  * Core SP-API Catalog Items 2022-04-01 record per (marketplace_code, asin):
  * dimensions, identifiers, thumbnail, product type, parent ASIN, variation
  * theme and summaries.
@@ -2762,6 +3192,125 @@ export interface DbTable_amzspapi_catalog_items_v20220401__itemimages {
 	images: Json;
 	marketplace_code: string;
 	modified_at: InstantColumn;
+}
+
+/**
+ * One item line on an FBA inbound shipment as reported by the older FBA
+ * Inbound API, one row per (merchantId, shipmentId, msku). This is the only
+ * Amazon source of per-item received quantity — the newer API exposes no such
+ * field — so it is the companion of amzspapi_fbaInbound_v2024__ShipmentItem
+ * when verifying what a shipment received. shipmentId here is the FBA-format
+ * confirmation id, the join key to amzspapi_fbaInbound_v2024__Shipment. Treat
+ * quantityReceived as a receipt counter and not as a located-in-full verdict:
+ * it can fall after a shipment closes.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_fbaInbound_v0__ShipmentItem {
+	fnsku: string | null;
+	/**
+	 * When the walker last wrote this row; the API does not expose its own last-updated timestamp
+	 */
+	lastFetchedAt: InstantColumn;
+	merchantId: string;
+	/**
+	 * Seller SKU (v0 SellerSKU); one row per SKU per shipment
+	 */
+	msku: string;
+	quantityInCase: number | null;
+	quantityReceived: number | null;
+	/**
+	 * Units the seller declared shipped (v0 QuantityShipped)
+	 */
+	quantityShipped: number;
+	/**
+	 * FBA-format shipment confirmation id (v0 ShipmentId == v2024 shipmentConfirmationId)
+	 */
+	shipmentId: string;
+}
+
+/**
+ * An FBA inbound plan, one row per (merchantId, inboundPlanId). Plans Amazon
+ * rejects as Amazon Warehousing and Distribution plans are still stored, with
+ * isAwd set, so the forward watermark passes over them naturally; no shipment
+ * or item calls are made for them.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_fbaInbound_v2024__InboundPlan {
+	inboundPlanId: string;
+	/**
+	 * True when getInboundPlan returned the AWD-trap signature; see file JSDoc for details
+	 */
+	isAwd: Generated<boolean>;
+	lastFetchedAt: InstantColumn | null;
+	lastSeenAt: InstantColumn | null;
+	merchantId: string;
+	name: string | null;
+	packingOption: Json | null;
+	placementOption: Json | null;
+	planLastUpdatedAt: InstantColumn | null;
+	sourceAddress: Json | null;
+	status: string | null;
+}
+
+/**
+ * An FBA inbound shipment, one row per (merchantId, shipmentId). A unique
+ * index on (merchantId, shipmentConfirmationId) is what lets receipt rows in
+ * amzreport_LEDGER_DETAIL be joined back to a shipment. shipmentConfirmationId
+ * is the FBA-format identifier and is null only between the plan being
+ * recorded and the shipment detail call succeeding.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_fbaInbound_v2024__Shipment {
+	amazonReferenceId: string | null;
+	dates: Json | null;
+	destinationAddress: Json | null;
+	destinationWarehouseId: string | null;
+	/**
+	 * Parent inboundPlanId this shipment belongs to
+	 */
+	inboundPlanId: string;
+	lastSeenAt: InstantColumn | null;
+	merchantId: string;
+	name: string | null;
+	placementOptionId: string | null;
+	selectedDeliveryWindow: Json | null;
+	selectedTransportationOptionId: string | null;
+	shipmentConfirmationId: string | null;
+	shipmentId: string;
+	sourceAddress: Json | null;
+	status: string | null;
+	trackingDetails: Json | null;
+}
+
+/**
+ * One line item on an FBA inbound shipment, one row per (merchantId,
+ * shipmentId, index), where index is the position of the line within one full
+ * walk of that shipment's items. There is no natural key: Amazon returns
+ * several entries for the same msku in one shipment that differ only in
+ * quantity, so each walk deletes the shipment's rows and reinserts them.
+ * quantity is the planned and shipped quantity; received quantity is not
+ * exposed here and comes from amzreport_LEDGER_DETAIL through the shipment
+ * confirmation id.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzspapi_fbaInbound_v2024__ShipmentItem {
+	asin: string | null;
+	fnsku: string | null;
+	/**
+	 * 1-based position of the line item within one full listShipmentItems walk
+	 */
+	index: number;
+	labelOwner: string | null;
+	lastSeenAt: InstantColumn | null;
+	merchantId: string;
+	msku: string;
+	prepInstructions: Json | null;
+	quantity: number | null;
+	shipmentId: string;
 }
 
 /**
@@ -3132,7 +3681,7 @@ export interface DbTable_amzspapi_searchCatalogItems_v2020__target {
 	 */
 	merchantId: string;
 	/**
-	 * Signed BIGINT primary key; deterministic hash of (wsid, merchantId, marketplaceId, keyword, locale), computed identically to the central schedule table
+	 * Signed BIGINT primary key; a deterministic hash of (workspace, merchantId, marketplaceId, keyword, locale), so the same search target always gets the same id
 	 */
 	targetId: Int8;
 	/**
@@ -4033,11 +4582,11 @@ export interface DbTable_fx_ecb_rate_latest {
  */
 export interface DbTable_shopify_customers_v1__Customer {
 	/**
-	 * `Customer.amountSpent.amount`, lifetime spend; the bag is `MoneyV2!` and measured 100%. NOT reconcilable against a sum of this customer's order totals: the orders corpus carries AUD on 188 of 50,085 rows while every `amountSpent` here is USD, so the two are in different currencies with no conversion Shopify shows us. Store it, do not derive from it
+	 * `Customer.amountSpent.amount`, lifetime spend; the bag is `MoneyV2!`, so always present. NOT reconcilable against a sum of this customer's order totals: orders can carry a different currency from `amountSpent`, with no conversion Shopify shows us. Store it, do not derive from it
 	 */
 	amountSpentAmount: Numeric;
 	/**
-	 * `Customer.amountSpent.currencyCode`. The denomination of the column above and of nothing else. `MoneyV2` carries its OWN code, so the shop-currency substitution `shopify_products_v1__ProductVariant` uses for the scalar `Money` has no place here and must not be introduced. Measured USD on all 38,789 rows — a single value today, not a guarantee
+	 * `Customer.amountSpent.currencyCode`. The denomination of the column above and of nothing else. `MoneyV2` carries its OWN code, so the shop-currency substitution `shopify_products_v1__ProductVariant` uses for the scalar `Money` has no place here and must not be introduced. A single value per shop so far, not a guarantee
 	 */
 	amountSpentCurrency: string;
 	/**
@@ -4045,15 +4594,15 @@ export interface DbTable_shopify_customers_v1__Customer {
 	 */
 	createdAt: InstantColumn;
 	/**
-	 * `Customer.defaultAddress.city`; measured 89.30% filled. The address itself is nullable (measured 90.42%). Geography only — the rest of the address stays in `doc`
+	 * `Customer.defaultAddress.city`; nullable, as is the address itself. Geography only — the rest of the address stays in `doc`
 	 */
 	defaultCity: string | null;
 	/**
-	 * `Customer.defaultAddress.countryCodeV2`; measured 89.87% filled, 67 distinct values
+	 * `Customer.defaultAddress.countryCodeV2`; nullable
 	 */
 	defaultCountryCodeV2: string | null;
 	/**
-	 * `Customer.defaultAddress.provinceCode`; measured 88.96% filled, 140 distinct values
+	 * `Customer.defaultAddress.provinceCode`; nullable
 	 */
 	defaultProvinceCode: string | null;
 	/**
@@ -4061,15 +4610,15 @@ export interface DbTable_shopify_customers_v1__Customer {
 	 */
 	doc: Json;
 	/**
-	 * `Customer.legacyResourceId`, the REST Admin API id that appears in the merchant's admin URLs; `UnsignedInt64!` and measured 38,789/38,789. THE KEY: the full GID is `gid://shopify/Customer/<this>` and is not stored, because nothing here rebuilds one. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 * `Customer.legacyResourceId`, the REST Admin API id that appears in the merchant's admin URLs; `UnsignedInt64!`. THE KEY: the full GID is `gid://shopify/Customer/<this>` and is not stored, because nothing here rebuilds one. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
 	 */
 	id: Int8;
 	/**
-	 * The last order's numeric id, parsed out of `Customer.lastOrder.id`, and the join key into `shopify_orders_v1__Order.id`. `Order` is nullable and measured 68.78% filled (26,679 of 38,789). Its null EXACTLY agrees with `numberOfOrders = 0` on all 12,110 such rows, with zero disagreements either way. No declared foreign key
+	 * The last order's numeric id, parsed out of `Customer.lastOrder.id`, and the join key into `shopify_orders_v1__Order.id`. `Order` is nullable, and its null agrees exactly with `numberOfOrders = 0`. No declared foreign key
 	 */
 	lastOrderId: Int8 | null;
 	/**
-	 * `Customer.numberOfOrders`; `UnsignedInt64!` on the wire (a STRING, like every UnsignedInt64) and measured 38,789/38,789 with 48 distinct values and a maximum of 73. Stored as INTEGER because the measured range is nowhere near needing more, and the decoder REFUSES a value that would not fit rather than silently truncating it. THIS is the field that answers 'has this customer ever ordered' — not the lifetime spend, which is 0.00 on 352 customers that do have orders
+	 * `Customer.numberOfOrders`; `UnsignedInt64!` on the wire (a STRING, like every UnsignedInt64). Stored as INTEGER because real values are nowhere near needing more, and the decoder REFUSES a value that would not fit rather than silently truncating it. THIS is the field that answers 'has this customer ever ordered' — not the lifetime spend, which can be 0.00 on customers that do have orders
 	 */
 	numberOfOrders: number;
 	/**
@@ -4077,19 +4626,19 @@ export interface DbTable_shopify_customers_v1__Customer {
 	 */
 	shopId: Int8;
 	/**
-	 * SOURCE instant: `Customer.createdAt`; `DateTime!`, measured 38,789/38,789. Prefixed `shopify` so it cannot be confused with our own `createdAt` bookkeeping column
+	 * SOURCE instant: `Customer.createdAt`; `DateTime!`. Prefixed `shopify` so it cannot be confused with our own `createdAt` bookkeeping column
 	 */
 	shopifyCreatedAt: InstantColumn;
 	/**
-	 * SOURCE instant: `Customer.updatedAt`; `DateTime!`, measured 38,789/38,789. This is the field the incremental sweep filters on, but it is NOT the durable watermark: Shopify returns it TRUNCATED TO THE SECOND, so treating a returned value as an exact instant loses up to a second of rows. The watermark lives in `op_shopify_bulk_v1__watermark` with an explicit overlap
+	 * SOURCE instant: `Customer.updatedAt`; `DateTime!`. This is the field the incremental sweep filters on, but it is NOT the durable watermark: Shopify returns it TRUNCATED TO THE SECOND, so treating a returned value as an exact instant loses up to a second of rows. The sweep keeps its own watermark with an explicit overlap
 	 */
 	shopifyUpdatedAt: InstantColumn;
 	/**
-	 * `Customer.state`; `CustomerState!`, measured 38,789/38,789 with 3 distinct values (ENABLED, DISABLED, INVITED). Schema.String and NOT Schema.Literal: the enum declares more members than appear here and Shopify may add one in any quarterly version, which a Literal would turn into an ingest failure on a row we could otherwise have stored
+	 * `Customer.state`; `CustomerState!` (ENABLED, DISABLED, INVITED among others). Schema.String and NOT Schema.Literal: the enum declares more members than have been seen and Shopify may add one in any quarterly version, which a Literal would turn into an ingest failure on a row we could otherwise have stored
 	 */
 	state: string;
 	/**
-	 * `Customer.taxExempt`; `Boolean!`, measured 38,789/38,789 and `false` on EVERY ROW. It is a real field and is stored, but nothing on this store exercises the true branch, so any logic keyed on it ships untested here
+	 * `Customer.taxExempt`; `Boolean!`. It is a real field and is stored, but a store may never exercise the true branch, so any logic keyed on it can ship untested
 	 */
 	taxExempt: boolean;
 	/**
@@ -4097,7 +4646,7 @@ export interface DbTable_shopify_customers_v1__Customer {
 	 */
 	updatedAt: InstantColumn;
 	/**
-	 * `Customer.verifiedEmail`; `Boolean!`, measured 38,789/38,789 with both values present
+	 * `Customer.verifiedEmail`; `Boolean!`
 	 */
 	verifiedEmail: boolean;
 }
@@ -4114,39 +4663,39 @@ export interface DbTable_shopify_customers_v1__Customer {
  */
 export interface DbTable_shopify_discounts_v1__Discount {
 	/**
-	 * `discount.appDiscountType.appKey`; the app that owns the function. Measured on 8 of 169
+	 * `discount.appDiscountType.appKey`; the app that owns the function. Declared only by the two App members
 	 */
 	appDiscountTypeAppKey: string | null;
 	/**
-	 * `discount.appDiscountType.functionId`; measured on 8 of 169
+	 * `discount.appDiscountType.functionId`; declared only by the two App members
 	 */
 	appDiscountTypeFunctionId: string | null;
 	/**
-	 * `discount.appDiscountType.title`; declared only by DiscountCodeApp and DiscountAutomaticApp, measured on 8 of 169. For an app-function discount this is the closest thing to a `summary`, which those two members do not declare
+	 * `discount.appDiscountType.title`; declared only by DiscountCodeApp and DiscountAutomaticApp. For an app-function discount this is the closest thing to a `summary`, which those two members do not declare
 	 */
 	appDiscountTypeTitle: string | null;
 	/**
-	 * `discount.appliesOncePerCustomer`; `Boolean!` on the four code members and absent from the four automatic ones, so null means automatic. Measured present on 162 of 169
+	 * `discount.appliesOncePerCustomer`; `Boolean!` on the four code members and absent from the four automatic ones, so null means automatic
 	 */
 	appliesOncePerCustomer: boolean | null;
 	/**
-	 * `discount.asyncUsageCount`; `Int!` on all eight members, measured 169/169. Redemptions counted asynchronously. DO NOT TREAT IT AS A FRESHNESS SIGNAL: whether a redemption moves `shopifyUpdatedAt` has never been observed here
+	 * `discount.asyncUsageCount`; `Int!` on all eight members. Redemptions counted asynchronously. DO NOT TREAT IT AS A FRESHNESS SIGNAL: whether a redemption moves `shopifyUpdatedAt` has never been observed
 	 */
 	asyncUsageCount: number;
 	/**
-	 * `discount.codesCount.count`; `Count` on the four code members, absent from the automatic ones. Measured present on 162 of 169 and EQUAL to the number of `shopify_discounts_v1__DiscountRedeemCode` rows for the discount on every one of them — the importer checks that rather than assuming it. `codesCount.precision` was EXACT on all 162 and is not promoted; an APPROXIMATE precision would make this an estimate and lives in `doc`
+	 * `discount.codesCount.count`; `Count` on the four code members, absent from the automatic ones. EQUAL to the number of `shopify_discounts_v1__DiscountRedeemCode` rows for the discount — the importer checks that rather than assuming it. `codesCount.precision` is not promoted; an APPROXIMATE precision would make this an estimate and lives in `doc`
 	 */
 	codeCount: number | null;
 	/**
-	 * `discount.combinesWith.orderDiscounts`; `DiscountCombinesWith!` on all eight members, so the object is always present, measured 169/169
+	 * `discount.combinesWith.orderDiscounts`; `DiscountCombinesWith!` on all eight members, so the object is always present
 	 */
 	combinesWithOrderDiscounts: boolean;
 	/**
-	 * `discount.combinesWith.productDiscounts`; measured 169/169
+	 * `discount.combinesWith.productDiscounts`; always present, as on `combinesWithOrderDiscounts`
 	 */
 	combinesWithProductDiscounts: boolean;
 	/**
-	 * `discount.combinesWith.shippingDiscounts`; measured 169/169
+	 * `discount.combinesWith.shippingDiscounts`; always present, as on `combinesWithOrderDiscounts`
 	 */
 	combinesWithShippingDiscounts: boolean;
 	/**
@@ -4154,7 +4703,7 @@ export interface DbTable_shopify_discounts_v1__Discount {
 	 */
 	createdAt: InstantColumn;
 	/**
-	 * `discount.discountClasses`; `[DiscountClass!]!` on all eight members, measured 169/169. Persisted as JSONB because it is a small closed-enum ARRAY — PRODUCT (137 rows), ORDER (29) and SHIPPING (5) — and splitting it into booleans would invent a shape Shopify does not have
+	 * `discount.discountClasses`; `[DiscountClass!]!` on all eight members. Persisted as JSONB because it is a small closed-enum ARRAY — PRODUCT, ORDER and SHIPPING — and splitting it into booleans would invent a shape Shopify does not have
 	 */
 	discountClasses: Json;
 	/**
@@ -4166,7 +4715,7 @@ export interface DbTable_shopify_discounts_v1__Discount {
 	 */
 	doc: Json;
 	/**
-	 * SOURCE instant: `discount.endsAt`; `DateTime` (nullable) on all eight members. Measured null on 86 of 169, which is a discount with no end date rather than a missing value
+	 * SOURCE instant: `discount.endsAt`; `DateTime` (nullable) on all eight members. Null is a discount with no end date rather than a missing value
 	 */
 	endsAt: InstantColumn | null;
 	/**
@@ -4174,11 +4723,11 @@ export interface DbTable_shopify_discounts_v1__Discount {
 	 */
 	fetchedAt: InstantColumn;
 	/**
-	 * Full Shopify GID of the discount node. Measured as one of exactly two namespaces on 2026-08-18 — `gid://shopify/DiscountCodeNode/<n>` on 162 rows and `gid://shopify/DiscountAutomaticNode/<n>` on 7 — never `DiscountNode`, which is the GraphQL type name and not an id namespace
+	 * Full Shopify GID of the discount node. One of exactly two namespaces — `gid://shopify/DiscountCodeNode/<n>` or `gid://shopify/DiscountAutomaticNode/<n>` — never `DiscountNode`, which is the GraphQL type name and not an id namespace
 	 */
 	id: string;
 	/**
-	 * The type segment of `id`: `DiscountCodeNode` (162 of 169 measured) or `DiscountAutomaticNode` (7). It is the coarse code-versus-automatic split, and it is derived from the GID rather than from `discountType` so the two can be checked against each other
+	 * The type segment of `id`: `DiscountCodeNode` or `DiscountAutomaticNode`. It is the coarse code-versus-automatic split, and it is derived from the GID rather than from `discountType` so the two can be checked against each other
 	 */
 	nodeType: string;
 	/**
@@ -4186,43 +4735,43 @@ export interface DbTable_shopify_discounts_v1__Discount {
 	 */
 	shopId: Int8;
 	/**
-	 * SOURCE instant: `discount.createdAt`; `DateTime!` on all eight members, measured 169/169. The oldest measured is 2016-12-16
+	 * SOURCE instant: `discount.createdAt`; `DateTime!` on all eight members
 	 */
 	shopifyCreatedAt: InstantColumn;
 	/**
-	 * SOURCE instant: `discount.updatedAt`; `DateTime!` on all eight members, measured 169/169. Q05 measured it moving on 0 of 168 rows across a 7.24-hour window. NOT USED AS A FILTER — see the header for why that is a statement about pointlessness rather than about correctness
+	 * SOURCE instant: `discount.updatedAt`; `DateTime!` on all eight members. It has been observed not to move at all across a multi-hour window. NOT USED AS A FILTER, and that is a statement about pointlessness rather than about correctness: the whole discount set is re-exported on every run in about five seconds, so filtering on it would save nothing. Nothing observed here says this family's `updatedAt` lies
 	 */
 	shopifyUpdatedAt: InstantColumn;
 	/**
-	 * `discount.shortSummary`; `String!` on the four Basic and FreeShipping members only, absent from both Bxgy and both App members. Measured on 156 of 169
+	 * `discount.shortSummary`; `String!` on the four Basic and FreeShipping members only, absent from both Bxgy and both App members
 	 */
 	shortSummary: string | null;
 	/**
-	 * SOURCE instant: `discount.startsAt`; `DateTime!` on all eight members, measured 169/169
+	 * SOURCE instant: `discount.startsAt`; `DateTime!` on all eight members
 	 */
 	startsAt: InstantColumn;
 	/**
-	 * `discount.status`; `DiscountStatus!` on all eight members, measured 169/169. The enum is ACTIVE, EXPIRED, SCHEDULED; 87 ACTIVE and 82 EXPIRED were measured and SCHEDULED was not seen. Stored as text rather than a Literal union so a new enum member is a row rather than a failure
+	 * `discount.status`; `DiscountStatus!` on all eight members. The enum is ACTIVE, EXPIRED, SCHEDULED. Stored as text rather than a Literal union so a new enum member is a row rather than a failure
 	 */
 	status: string;
 	/**
-	 * `discount.summary`; `String!` on the six non-app members and ABSENT from DiscountCodeApp and DiscountAutomaticApp, so null means the member does not declare it rather than that the value was empty. Measured on 161 of 169. Shopify's own rendering of what the discount does, e.g. `10% off one-time purchase products • One use per customer`. It is the stand-in for the deep unions this document does not select — see the header
+	 * `discount.summary`; `String!` on the six non-app members and ABSENT from DiscountCodeApp and DiscountAutomaticApp, so null means the member does not declare it rather than that the value was empty. Shopify's own rendering of what the discount does, e.g. `10% off one-time purchase products • One use per customer`. It is the stand-in for the deep value and condition unions this row deliberately does not select: descending into them risks a single denied or misspelled field nulling the whole export rather than just that field
 	 */
 	summary: string | null;
 	/**
-	 * `discount.title`; `String!` on all eight members, measured 169/169. The merchant-facing name, which on a code discount is usually but not always the code itself
+	 * `discount.title`; `String!` on all eight members. The merchant-facing name, which on a code discount is usually but not always the code itself
 	 */
 	title: string;
 	/**
-	 * `discount.totalSales.amount`; `MoneyV2` (nullable) on the four code members and on DiscountAutomaticFreeShipping, absent from the other three automatic members. Measured non-null on 92 of 169: null is a discount that has never been redeemed, which is 70 of the 162 code discounts. NUMERIC column via the postgresType override
+	 * `discount.totalSales.amount`; `MoneyV2` (nullable) on the four code members and on DiscountAutomaticFreeShipping, absent from the other three automatic members. Null is a discount that has never been redeemed. NUMERIC column via the postgresType override
 	 */
 	totalSalesAmount: Numeric | null;
 	/**
-	 * `discount.totalSales.currencyCode`, paired with `totalSalesAmount` and null exactly when it is. Measured USD on all 92
+	 * `discount.totalSales.currencyCode`, paired with `totalSalesAmount` and null exactly when it is
 	 */
 	totalSalesCurrency: string | null;
 	/**
-	 * `discount.usageLimit`; `Int` on the four code members only. NULL FOR TWO INDISTINGUISHABLE REASONS: the 7 automatic discounts do not declare the field, and 148 of the 162 code discounts declare it as null meaning unlimited. Measured non-null on 14 of 169
+	 * `discount.usageLimit`; `Int` on the four code members only. NULL FOR TWO INDISTINGUISHABLE REASONS: automatic discounts do not declare the field, and most code discounts declare it as null meaning unlimited
 	 */
 	usageLimit: number | null;
 }
@@ -4238,11 +4787,11 @@ export interface DbTable_shopify_discounts_v1__Discount {
  */
 export interface DbTable_shopify_discounts_v1__DiscountRedeemCode {
 	/**
-	 * `DiscountRedeemCode.asyncUsageCount`; `Int!`, measured 162/162. Redemptions of THIS code, counted asynchronously. It is a per-code breakdown of the parent's own `asyncUsageCount`, and the two are equal on this store only because every discount here has exactly one code
+	 * `DiscountRedeemCode.asyncUsageCount`; `Int!`. Redemptions of THIS code, counted asynchronously. It is a per-code breakdown of the parent's own `asyncUsageCount`, and the two are equal only when a discount has exactly one code
 	 */
 	asyncUsageCount: number;
 	/**
-	 * `DiscountRedeemCode.code`; `String!`, measured 162/162. The string a shopper types at checkout, and the value that joins to an order's discount codes. NOT the primary key — nothing measured says a retired code string cannot be reused on a later discount
+	 * `DiscountRedeemCode.code`; `String!`. The string a shopper types at checkout, and the value that joins to an order's discount codes. NOT the primary key — nothing says a retired code string cannot be reused on a later discount
 	 */
 	code: string;
 	/**
@@ -4262,7 +4811,7 @@ export interface DbTable_shopify_discounts_v1__DiscountRedeemCode {
 	 */
 	fetchedAt: InstantColumn;
 	/**
-	 * Full Shopify `DiscountRedeemCode` GID, e.g. `gid://shopify/DiscountRedeemCode/2167304713`. Measured 162/162 and distinct on every one
+	 * Full Shopify `DiscountRedeemCode` GID, e.g. `gid://shopify/DiscountRedeemCode/<n>`. Distinct on every row
 	 */
 	id: string;
 	/**
@@ -4282,11 +4831,11 @@ export interface DbTable_shopify_discounts_v1__DiscountRedeemCode {
  */
 export interface DbTable_shopify_inventory_v1__InventoryLevel {
 	/**
-	 * `quantities(names: ["available"])`. Measured present on all 447 and non-zero on 345, range -9178 to 8103. NEGATIVE VALUES ARE REAL on this store and are stored as they arrive
+	 * `quantities(names: ["available"])`. Always present. NEGATIVE VALUES ARE REAL and are stored as they arrive
 	 */
 	available: number;
 	/**
-	 * `quantities(names: ["committed"])`. Measured present on all 447 and non-zero on 26, range 0 to 59
+	 * `quantities(names: ["committed"])`. Always present
 	 */
 	committed: number;
 	/**
@@ -4294,7 +4843,7 @@ export interface DbTable_shopify_inventory_v1__InventoryLevel {
 	 */
 	createdAt: InstantColumn;
 	/**
-	 * `quantities(names: ["damaged"])`. Measured present on all 447 and zero on every one. Nullable for the reason given on `reserved`
+	 * `quantities(names: ["damaged"])`. Nullable for the reason given on `reserved`
 	 */
 	damaged: number | null;
 	/**
@@ -4306,11 +4855,11 @@ export interface DbTable_shopify_inventory_v1__InventoryLevel {
 	 */
 	fetchedAt: InstantColumn;
 	/**
-	 * `quantities(names: ["incoming"])`. Measured present on all 447 and zero on every one of them, so any logic keyed on it ships untested here
+	 * `quantities(names: ["incoming"])`. Always present, and may be zero on every level of a store, so any logic keyed on it can ship untested
 	 */
 	incoming: number;
 	/**
-	 * `InventoryLevel.item.legacyResourceId`; `UnsignedInt64!` on `InventoryItem`, measured 447/447. The same value appears on `shopify_products_v1__ProductVariant.inventoryItemId`, which is how a level reaches a variant without depending on `item.variant` being present
+	 * `InventoryLevel.item.legacyResourceId`; `UnsignedInt64!` on `InventoryItem`. The same value appears on `shopify_products_v1__ProductVariant.inventoryItemId`, which is how a level reaches a variant without depending on `item.variant` being present
 	 */
 	inventoryItemId: Int8;
 	/**
@@ -4318,23 +4867,23 @@ export interface DbTable_shopify_inventory_v1__InventoryLevel {
 	 */
 	levelGid: string;
 	/**
-	 * `InventoryLevel.location.legacyResourceId`. The bulk JSONL's `__parentId` names the same location as a GID, measured equal on all 447 rows, and the importer checks that rather than assuming it. Refers to `shopify_locations_v1__Location.id`; no declared foreign key
+	 * `InventoryLevel.location.legacyResourceId`. The bulk JSONL's `__parentId` names the same location as a GID, and the importer checks that rather than assuming it. Refers to `shopify_locations_v1__Location.id`; no declared foreign key
 	 */
 	locationId: Int8;
 	/**
-	 * `quantities(names: ["on_hand"])`. Measured present on all 447 and non-zero on 345, range -9178 to 8132
+	 * `quantities(names: ["on_hand"])`. Always present; can be negative
 	 */
 	onHand: number;
 	/**
-	 * `quantities(names: ["quality_control"])`. Measured present on all 447 and zero on every one. Nullable for the reason given on `reserved`
+	 * `quantities(names: ["quality_control"])`. Nullable for the reason given on `reserved`
 	 */
 	qualityControl: number | null;
 	/**
-	 * `quantities(names: ["reserved"])`. Measured present on all 447 and zero on every one. NULLABLE, unlike the four above, because the four inventory states below `committed` depend on what the merchant's plan has enabled and one store is not evidence that every merchant's response carries them; an absent name is stored as null rather than as a fabricated zero
+	 * `quantities(names: ["reserved"])`. NULLABLE, unlike the four above, because the four inventory states below `committed` depend on what the merchant's plan has enabled and one store is not evidence that every merchant's response carries them; an absent name is stored as null rather than as a fabricated zero
 	 */
 	reserved: number | null;
 	/**
-	 * `quantities(names: ["safety_stock"])`. Measured present on all 447 and zero on every one. Nullable for the reason given on `reserved`
+	 * `quantities(names: ["safety_stock"])`. Nullable for the reason given on `reserved`
 	 */
 	safetyStock: number | null;
 	/**
@@ -4342,23 +4891,23 @@ export interface DbTable_shopify_inventory_v1__InventoryLevel {
 	 */
 	shopId: Int8;
 	/**
-	 * SOURCE instant: `InventoryLevel.createdAt`; `DateTime!`, measured 447/447
+	 * SOURCE instant: `InventoryLevel.createdAt`; `DateTime!`
 	 */
 	shopifyCreatedAt: InstantColumn;
 	/**
-	 * SOURCE instant: `InventoryLevel.updatedAt`; `DateTime!`, measured 447/447. DO NOT USE IT AS A FRESHNESS SIGNAL AND DO NOT FILTER ON IT: 6 of the 447 rows carried a per-quantity `updatedAt` newer than this value on 2026-08-17, which is the measurement behind this family keeping no watermark. `fetchedAt` is the column that answers when we last confirmed the row
+	 * SOURCE instant: `InventoryLevel.updatedAt`; `DateTime!`. DO NOT USE IT AS A FRESHNESS SIGNAL AND DO NOT FILTER ON IT: a level can carry a per-quantity `updatedAt` newer than this value, which is why this family keeps no watermark. `fetchedAt` is the column that answers when we last confirmed the row
 	 */
 	shopifyUpdatedAt: InstantColumn;
 	/**
-	 * `InventoryLevel.item.sku`; `String` (nullable in the schema) though measured 447/447 here, 21 characters at the longest. Denormalized onto the level so a stock report does not have to join through the variant table
+	 * `InventoryLevel.item.sku`; `String` (nullable in the schema) though usually filled. Denormalized onto the level so a stock report does not have to join through the variant table
 	 */
 	sku: string | null;
 	/**
-	 * `InventoryLevel.item.tracked`; `Boolean!`, measured true on only 53 of 447. THIS is the column that says whether a quantity means anything: Shopify keeps returning levels for untracked items and their numbers do not move with sales
+	 * `InventoryLevel.item.tracked`; `Boolean!`, and false on most levels. THIS is the column that says whether a quantity means anything: Shopify keeps returning levels for untracked items and their numbers do not move with sales
 	 */
 	tracked: boolean;
 	/**
-	 * The variant's numeric id, parsed out of `InventoryLevel.item.variant.id`. `ProductVariant` is nullable in the schema — an inventory item need not belong to a variant — though measured 447/447 here. Nullable on the schema's authority. Joins to `shopify_products_v1__ProductVariant.id`
+	 * The variant's numeric id, parsed out of `InventoryLevel.item.variant.id`. `ProductVariant` is nullable in the schema — an inventory item need not belong to a variant — though usually filled. Nullable on the schema's authority. Joins to `shopify_products_v1__ProductVariant.id`
 	 */
 	variantId: Int8 | null;
 }
@@ -4374,15 +4923,15 @@ export interface DbTable_shopify_inventory_v1__InventoryLevel {
  */
 export interface DbTable_shopify_locations_v1__Location {
 	/**
-	 * `Location.address.city`; nullable in the schema and measured on 3 of 4
+	 * `Location.address.city`; nullable in the schema
 	 */
 	addressCity: string | null;
 	/**
-	 * `Location.address.countryCode`; nullable in the schema though measured 4/4. The other address lines — street, zip and phone — stay in `doc`
+	 * `Location.address.countryCode`; nullable in the schema though usually filled. The other address lines — street, zip and phone — stay in `doc`
 	 */
 	addressCountryCode: string | null;
 	/**
-	 * `Location.address.provinceCode`; nullable in the schema and measured on 3 of 4
+	 * `Location.address.provinceCode`; nullable in the schema
 	 */
 	addressProvinceCode: string | null;
 	/**
@@ -4394,31 +4943,31 @@ export interface DbTable_shopify_locations_v1__Location {
 	 */
 	doc: Json;
 	/**
-	 * `Location.fulfillsOnlineOrders`; `Boolean!`, measured true on 3 of 4
+	 * `Location.fulfillsOnlineOrders`; `Boolean!`
 	 */
 	fulfillsOnlineOrders: boolean;
 	/**
-	 * `Location.hasActiveInventory`; `Boolean!`, measured true on 2 of 4 — and those are exactly the two locations that carry inventory levels (402 and 45 of the 447). The other two return no levels at all, so this column is the cheap answer to 'why does this location have no rows in the levels table'
+	 * `Location.hasActiveInventory`; `Boolean!` — true on exactly the locations that carry inventory levels. A location where it is false returns no levels at all, so this column is the cheap answer to 'why does this location have no rows in the levels table'
 	 */
 	hasActiveInventory: boolean;
 	/**
-	 * `Location.legacyResourceId`, the REST Admin API id that appears in the merchant's admin URLs; `UnsignedInt64!` and measured 4/4. THE KEY, and the value `shopify_inventory_v1__InventoryLevel.locationId` refers to. The full GID is `gid://shopify/Location/<this>` and is not stored, because nothing here rebuilds one. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 * `Location.legacyResourceId`, the REST Admin API id that appears in the merchant's admin URLs; `UnsignedInt64!`. THE KEY, and the value `shopify_inventory_v1__InventoryLevel.locationId` refers to. The full GID is `gid://shopify/Location/<this>` and is not stored, because nothing here rebuilds one. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
 	 */
 	id: Int8;
 	/**
-	 * `Location.isActive`; `Boolean!`, measured true on all 4. A deactivated location can still hold inventory levels, which is why the read passes `includeInactive: true` rather than relying on this column to explain a missing parent
+	 * `Location.isActive`; `Boolean!`. A deactivated location can still hold inventory levels, which is why the read passes `includeInactive: true` rather than relying on this column to explain a missing parent
 	 */
 	isActive: boolean;
 	/**
-	 * `Location.isFulfillmentService`; `Boolean!`, measured true on 1 of 4. That one location is the one only `includeLegacy: true` returns, and it holds 45 inventory levels
+	 * `Location.isFulfillmentService`; `Boolean!`. A fulfillment-service location is returned only with `includeLegacy: true`, and it can hold inventory levels
 	 */
 	isFulfillmentService: boolean;
 	/**
-	 * `Location.name`; `String!`, measured 4/4. A business label, not person data
+	 * `Location.name`; `String!`. A business label, not person data
 	 */
 	name: string;
 	/**
-	 * `Location.shipsInventory`; `Boolean!`, measured true on 1 of 4
+	 * `Location.shipsInventory`; `Boolean!`
 	 */
 	shipsInventory: boolean;
 	/**
@@ -4426,11 +4975,11 @@ export interface DbTable_shopify_locations_v1__Location {
 	 */
 	shopId: Int8;
 	/**
-	 * SOURCE instant: `Location.createdAt`; `DateTime!`, measured 4/4. Prefixed `shopify` so it cannot be confused with our own `createdAt` bookkeeping column
+	 * SOURCE instant: `Location.createdAt`; `DateTime!`. Prefixed `shopify` so it cannot be confused with our own `createdAt` bookkeeping column
 	 */
 	shopifyCreatedAt: InstantColumn;
 	/**
-	 * SOURCE instant: `Location.updatedAt`; `DateTime!`, measured 4/4. NOT a watermark — this family is a whole-set read and keeps no row in `op_shopify_bulk_v1__watermark`
+	 * SOURCE instant: `Location.updatedAt`; `DateTime!`. NOT a watermark — this family is a whole-set read and keeps no watermark
 	 */
 	shopifyUpdatedAt: InstantColumn;
 	/**
@@ -4451,15 +5000,15 @@ export interface DbTable_shopify_locations_v1__Location {
  */
 export interface DbTable_shopify_orders_v1__Order {
 	/**
-	 * `Order.billingAddress.city`. The address itself is nullable (measured null on 6 rows)
+	 * `Order.billingAddress.city`. The address itself is nullable
 	 */
 	billingCity: string | null;
 	/**
-	 * `Order.billingAddress.countryCodeV2`; measured 99.98% filled
+	 * `Order.billingAddress.countryCodeV2`; nullable, filled on nearly every order
 	 */
 	billingCountryCodeV2: string | null;
 	/**
-	 * `Order.billingAddress.provinceCode`; measured 99.77% filled
+	 * `Order.billingAddress.provinceCode`; nullable, filled on nearly every order
 	 */
 	billingProvinceCode: string | null;
 	/**
@@ -4467,19 +5016,19 @@ export interface DbTable_shopify_orders_v1__Order {
 	 */
 	createdAt: InstantColumn;
 	/**
-	 * `Order.currencyCode`, the shop's currency at the time the order was placed; `CurrencyCode!`, measured 50,085/50,085 with 2 distinct values (USD and AUD). This is order metadata, NOT the denomination of any column here — every amount below carries its own code
+	 * `Order.currencyCode`, the shop's currency at the time the order was placed; `CurrencyCode!`, and more than one value can occur on one shop. This is order metadata, NOT the denomination of any column here — every amount below carries its own code
 	 */
 	currencyCode: string;
 	/**
-	 * The customer's numeric id, parsed out of `Order.customer.id`. `Customer` is nullable in the schema and MEASURED null on 2 of 50,085 orders, so this column is nullable. It joins to `shopify_customers_v1__Customer.id`, which is the same number; no declared foreign key
+	 * The customer's numeric id, parsed out of `Order.customer.id`. `Customer` is nullable in the schema and occasionally null in practice, so this column is nullable. It joins to `shopify_customers_v1__Customer.id`, which is the same number; no declared foreign key
 	 */
 	customerId: Int8 | null;
 	/**
-	 * `Order.displayFinancialStatus`; `OrderDisplayFinancialStatus` — NULLABLE in the schema even though it measured 100% filled with 6 distinct values, so the column is nullable too. Schema.String and NOT Schema.Literal: Shopify may add an enum member in any quarterly version, and a Literal turns that into an ingest failure on a row we could otherwise have stored
+	 * `Order.displayFinancialStatus`; `OrderDisplayFinancialStatus` — NULLABLE in the schema even though it is filled in practice, so the column is nullable too. Schema.String and NOT Schema.Literal: Shopify may add an enum member in any quarterly version, and a Literal turns that into an ingest failure on a row we could otherwise have stored
 	 */
 	displayFinancialStatus: string | null;
 	/**
-	 * `Order.displayFulfillmentStatus`; `OrderDisplayFulfillmentStatus!`, measured 50,085/50,085 with 4 distinct values. Schema.String and not a Literal, for the same reason
+	 * `Order.displayFulfillmentStatus`; `OrderDisplayFulfillmentStatus!`. Schema.String and not a Literal, for the same reason
 	 */
 	displayFulfillmentStatus: string;
 	/**
@@ -4491,19 +5040,19 @@ export interface DbTable_shopify_orders_v1__Order {
 	 */
 	id: Int8;
 	/**
-	 * `Order.name`, the merchant-facing order number such as `#50453`; `String!`, measured 50,085/50,085. A business string, not person data
+	 * `Order.name`, the merchant-facing order number such as `#1001`; `String!`. A business string, not person data
 	 */
 	name: string;
 	/**
-	 * `Order.shippingAddress.city`. The address itself is nullable (measured null on 4 rows)
+	 * `Order.shippingAddress.city`. The address itself is nullable
 	 */
 	shippingCity: string | null;
 	/**
-	 * `Order.shippingAddress.countryCodeV2`; measured 99.98% filled, 37 distinct values
+	 * `Order.shippingAddress.countryCodeV2`; nullable, filled on nearly every order
 	 */
 	shippingCountryCodeV2: string | null;
 	/**
-	 * `Order.shippingAddress.provinceCode`; measured 99.84% filled
+	 * `Order.shippingAddress.provinceCode`; nullable, filled on nearly every order
 	 */
 	shippingProvinceCode: string | null;
 	/**
@@ -4511,23 +5060,23 @@ export interface DbTable_shopify_orders_v1__Order {
 	 */
 	shopId: Int8;
 	/**
-	 * SOURCE instant: `Order.cancelledAt`; `DateTime` (nullable), measured 1.66% filled
+	 * SOURCE instant: `Order.cancelledAt`; `DateTime` (nullable), filled only on cancelled orders
 	 */
 	shopifyCancelledAt: InstantColumn | null;
 	/**
-	 * SOURCE instant: `Order.closedAt`; `DateTime` (nullable), measured 99.28% filled
+	 * SOURCE instant: `Order.closedAt`; `DateTime` (nullable), filled on nearly every order
 	 */
 	shopifyClosedAt: InstantColumn | null;
 	/**
-	 * SOURCE instant: `Order.createdAt`; `DateTime!`, measured 50,085/50,085. Prefixed `shopify` so it cannot be confused with our own `createdAt` bookkeeping column
+	 * SOURCE instant: `Order.createdAt`; `DateTime!`. Prefixed `shopify` so it cannot be confused with our own `createdAt` bookkeeping column
 	 */
 	shopifyCreatedAt: InstantColumn;
 	/**
-	 * SOURCE instant: `Order.processedAt`, when the order was processed by the payment provider; `DateTime!`, measured 50,085/50,085
+	 * SOURCE instant: `Order.processedAt`, when the order was processed by the payment provider; `DateTime!`
 	 */
 	shopifyProcessedAt: InstantColumn;
 	/**
-	 * SOURCE instant: `Order.updatedAt`; `DateTime!`, measured 50,085/50,085. This is the field the incremental sweep filters on, but it is NOT the durable watermark: Shopify returns it TRUNCATED TO THE SECOND (Q05 decoded the pagination cursor to prove sub-second precision exists and is dropped), so treating a returned value as an exact instant loses up to a second of rows. The watermark lives in `op_shopify_bulk_v1__watermark` with an explicit overlap
+	 * SOURCE instant: `Order.updatedAt`; `DateTime!`. This is the field the incremental sweep filters on, but it is NOT the durable watermark: Shopify returns it TRUNCATED TO THE SECOND (decoding the pagination cursor shows that sub-second precision exists and is dropped), so treating a returned value as an exact instant loses up to a second of rows. The sweep keeps its own watermark with an explicit overlap
 	 */
 	shopifyUpdatedAt: InstantColumn;
 	/**
@@ -4539,7 +5088,7 @@ export interface DbTable_shopify_orders_v1__Order {
 	 */
 	subtotalPricePresentmentCurrency: string | null;
 	/**
-	 * `Order.subtotalPriceSet.shopMoney.amount`. NULLABLE because `subtotalPriceSet` is `MoneyBag` rather than `MoneyBag!`, despite measuring 100% filled
+	 * `Order.subtotalPriceSet.shopMoney.amount`. NULLABLE because `subtotalPriceSet` is `MoneyBag` rather than `MoneyBag!`, though filled in practice
 	 */
 	subtotalPriceShopAmount: Numeric | null;
 	/**
@@ -4547,7 +5096,7 @@ export interface DbTable_shopify_orders_v1__Order {
 	 */
 	subtotalPriceShopCurrency: string | null;
 	/**
-	 * `Order.test`; `Boolean!`, measured 50,085/50,085 with exactly 1 test order. Rare but real, so it must be filterable rather than assumed away
+	 * `Order.test`; `Boolean!`. Test orders are rare but real, so it must be filterable rather than assumed away
 	 */
 	test: boolean;
 	/**
@@ -4571,15 +5120,15 @@ export interface DbTable_shopify_orders_v1__Order {
 	 */
 	totalPricePresentmentAmount: Numeric;
 	/**
-	 * `Order.totalPriceSet.presentmentMoney.currencyCode`. Differs from the shop half on exactly 1 of 50,085 orders here — too rare to rely on, too real to discard
+	 * `Order.totalPriceSet.presentmentMoney.currencyCode`. Differs from the shop half only on rare orders — too rare to rely on, too real to discard
 	 */
 	totalPricePresentmentCurrency: string;
 	/**
-	 * `Order.totalPriceSet.shopMoney.amount`; the bag is `MoneyBag!` and measured 100% filled
+	 * `Order.totalPriceSet.shopMoney.amount`; the bag is `MoneyBag!`, so always present
 	 */
 	totalPriceShopAmount: Numeric;
 	/**
-	 * `Order.totalPriceSet.shopMoney.currencyCode`. The denomination of the column above and of nothing else. Measured USD on 49,897 rows and AUD on 188
+	 * `Order.totalPriceSet.shopMoney.currencyCode`. The denomination of the column above and of nothing else. More than one value can occur on one shop
 	 */
 	totalPriceShopCurrency: string;
 	/**
@@ -4591,7 +5140,7 @@ export interface DbTable_shopify_orders_v1__Order {
 	 */
 	totalRefundedPresentmentCurrency: string;
 	/**
-	 * `Order.totalRefundedSet.shopMoney.amount`; the bag is `MoneyBag!`, measured 100%. Zero on an unrefunded order rather than absent
+	 * `Order.totalRefundedSet.shopMoney.amount`; the bag is `MoneyBag!`, so always present. Zero on an unrefunded order rather than absent
 	 */
 	totalRefundedShopAmount: Numeric;
 	/**
@@ -4607,7 +5156,7 @@ export interface DbTable_shopify_orders_v1__Order {
 	 */
 	totalShippingPricePresentmentCurrency: string;
 	/**
-	 * `Order.totalShippingPriceSet.shopMoney.amount`; the bag is `MoneyBag!`, measured 100%
+	 * `Order.totalShippingPriceSet.shopMoney.amount`; the bag is `MoneyBag!`, so always present
 	 */
 	totalShippingPriceShopAmount: Numeric;
 	/**
@@ -4652,11 +5201,11 @@ export interface DbTable_shopify_orders_v1__OrderLineItem {
 	 */
 	createdAt: InstantColumn;
 	/**
-	 * `LineItem.currentQuantity`, quantity after refunds and removals; `Int!`, measured 100%
+	 * `LineItem.currentQuantity`, quantity after refunds and removals; `Int!`
 	 */
 	currentQuantity: number;
 	/**
-	 * `LineItem.discountedTotalSet.shopMoney.amount`; `MoneyBag!`, measured 100%
+	 * `LineItem.discountedTotalSet.shopMoney.amount`; `MoneyBag!`, so always present
 	 */
 	discountedTotalAmount: Numeric;
 	/**
@@ -4664,7 +5213,7 @@ export interface DbTable_shopify_orders_v1__OrderLineItem {
 	 */
 	discountedTotalCurrency: string;
 	/**
-	 * `LineItem.discountedUnitPriceSet.shopMoney.amount`; `MoneyBag!`, measured 100%
+	 * `LineItem.discountedUnitPriceSet.shopMoney.amount`; `MoneyBag!`, so always present
 	 */
 	discountedUnitPriceAmount: Numeric;
 	/**
@@ -4676,19 +5225,19 @@ export interface DbTable_shopify_orders_v1__OrderLineItem {
 	 */
 	doc: Json;
 	/**
-	 * The numeric tail of `LineItem.id`, e.g. 19664282419388 from `gid://shopify/LineItem/19664282419388`. THE KEY, and the one key in this schema that Shopify does not also publish as a `legacyResourceId` — see the header. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 * The numeric tail of `LineItem.id`, e.g. 19664282419388 from `gid://shopify/LineItem/19664282419388`. THE KEY, and the one key in this schema that Shopify does not also publish as a `legacyResourceId`: `LineItem` exposes none, so the tail is parsed out of the GID instead. It is stable and unique, but it is NOT a number the merchant can look up. Note the GID type is `LineItem`, not `OrderLineItem`. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
 	 */
 	id: Int8;
 	/**
-	 * `LineItem.name`, the title as shown to the buyer including the variant; `String!`, measured 78,124/78,124
+	 * `LineItem.name`, the title as shown to the buyer including the variant; `String!`
 	 */
 	name: string;
 	/**
-	 * The parent Order's id, parsed out of the bulk JSONL's `__parentId`. NOT a selectable GraphQL field. Measured 78,124/78,124, every one immediately following its own parent line. Equal to `shopify_orders_v1__Order.id`, which Shopify supplies as `legacyResourceId` on the parent line rather than as a GID tail — the two are the same number
+	 * The parent Order's id, parsed out of the bulk JSONL's `__parentId`. NOT a selectable GraphQL field. Always present, every line immediately following its own parent line. Equal to `shopify_orders_v1__Order.id`, which Shopify supplies as `legacyResourceId` on the parent line rather than as a GID tail — the two are the same number
 	 */
 	orderId: Int8;
 	/**
-	 * `LineItem.originalTotalSet.shopMoney.amount`; `MoneyBag!`, measured 100%
+	 * `LineItem.originalTotalSet.shopMoney.amount`; `MoneyBag!`, so always present
 	 */
 	originalTotalAmount: Numeric;
 	/**
@@ -4696,7 +5245,7 @@ export interface DbTable_shopify_orders_v1__OrderLineItem {
 	 */
 	originalTotalCurrency: string;
 	/**
-	 * `LineItem.originalUnitPriceSet.shopMoney.amount`; `MoneyBag!`, measured 100%
+	 * `LineItem.originalUnitPriceSet.shopMoney.amount`; `MoneyBag!`, so always present
 	 */
 	originalUnitPriceAmount: Numeric;
 	/**
@@ -4704,15 +5253,15 @@ export interface DbTable_shopify_orders_v1__OrderLineItem {
 	 */
 	originalUnitPriceCurrency: string;
 	/**
-	 * The product's numeric id, parsed out of `LineItem.product.id`. `Product` is nullable and MEASURED null on 2,275 of 78,124 rows — Shopify severs the reference when a product is deleted, so a null here is the fingerprint of a deleted product rather than a dangling id. Joins to `shopify_products_v1__Product.id`
+	 * The product's numeric id, parsed out of `LineItem.product.id`. `Product` is nullable — Shopify severs the reference when a product is deleted, so a null here is the fingerprint of a deleted product rather than a dangling id. Joins to `shopify_products_v1__Product.id`
 	 */
 	productId: Int8 | null;
 	/**
-	 * `LineItem.quantity` as ordered; `Int!`, measured 78,124/78,124
+	 * `LineItem.quantity` as ordered; `Int!`
 	 */
 	quantity: number;
 	/**
-	 * `LineItem.requiresShipping`; `Boolean!`, measured 78,124/78,124
+	 * `LineItem.requiresShipping`; `Boolean!`
 	 */
 	requiresShipping: boolean;
 	/**
@@ -4720,15 +5269,15 @@ export interface DbTable_shopify_orders_v1__OrderLineItem {
 	 */
 	shopId: Int8;
 	/**
-	 * `LineItem.sku`; `String` — NULLABLE in the schema though measured 78,124/78,124 here. Kept nullable because one store's SKU discipline is not evidence about every merchant's
+	 * `LineItem.sku`; `String` — NULLABLE in the schema though usually filled. Kept nullable because one store's SKU discipline is not evidence about every merchant's
 	 */
 	sku: string | null;
 	/**
-	 * `LineItem.taxable`; `Boolean!`, measured 78,124/78,124
+	 * `LineItem.taxable`; `Boolean!`
 	 */
 	taxable: boolean;
 	/**
-	 * `LineItem.title`, the product title at the time of sale; `String!`, measured 100%
+	 * `LineItem.title`, the product title at the time of sale; `String!`
 	 */
 	title: string;
 	/**
@@ -4736,15 +5285,15 @@ export interface DbTable_shopify_orders_v1__OrderLineItem {
 	 */
 	updatedAt: InstantColumn;
 	/**
-	 * The variant's numeric id, parsed out of `LineItem.variant.id`. Nullable, MEASURED null on 2,614 rows. Joins to `shopify_products_v1__ProductVariant.id`
+	 * The variant's numeric id, parsed out of `LineItem.variant.id`. Nullable. Joins to `shopify_products_v1__ProductVariant.id`
 	 */
 	variantId: Int8 | null;
 	/**
-	 * `LineItem.variantTitle`; `String` (nullable), MEASURED null on 61,893 of 78,124 rows
+	 * `LineItem.variantTitle`; `String` (nullable), and null on most lines
 	 */
 	variantTitle: string | null;
 	/**
-	 * `LineItem.vendor`; `String` (nullable) and MEASURED null on 7 of 78,124 rows. 3 distinct values on this store
+	 * `LineItem.vendor`; `String` (nullable), rarely null
 	 */
 	vendor: string | null;
 }
@@ -4767,7 +5316,7 @@ export interface DbTable_shopify_products_v1__Product {
 	 */
 	doc: Json;
 	/**
-	 * `Product.handle`, the storefront URL slug; `String!`, measured 49/49
+	 * `Product.handle`, the storefront URL slug; `String!`
 	 */
 	handle: string;
 	/**
@@ -4775,35 +5324,35 @@ export interface DbTable_shopify_products_v1__Product {
 	 */
 	id: Int8;
 	/**
-	 * `Product.productType`; `String!`, measured 49/49, 19 distinct
+	 * `Product.productType`; `String!`
 	 */
 	productType: string;
 	/**
-	 * THE STORE THIS ROW CAME FROM: the Shopify shop id, i.e. the decimal tail of `gid://shopify/Shop/<digits>`, and the value `SovConnector.connectorKey` holds for the connector that fetched it. See the header. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
+	 * THE STORE THIS ROW CAME FROM: the Shopify shop id, i.e. the decimal tail of `gid://shopify/Shop/<digits>`, which is also the key of the Databrill connector that fetched it. It is Shopify's permanent identifier for the store: the merchant can read it off their own admin URLs, and it survives a `myshopify.com` domain change, an ownership transfer, and the connector being removed and re-registered. String-typed with a BIGINT column, because the postgres driver round-trips BIGINT as a string
 	 */
 	shopId: Int8;
 	/**
-	 * SOURCE instant: `Product.createdAt`; `DateTime!` (RFC 3339 UTC), measured 49/49. Prefixed `shopify` so it cannot be confused with our own `createdAt` bookkeeping column
+	 * SOURCE instant: `Product.createdAt`; `DateTime!` (RFC 3339 UTC). Prefixed `shopify` so it cannot be confused with our own `createdAt` bookkeeping column
 	 */
 	shopifyCreatedAt: InstantColumn;
 	/**
-	 * SOURCE instant: `Product.publishedAt`; `DateTime` (nullable in the schema) and MEASURED null on 9 of 49 rows — an unpublished product
+	 * SOURCE instant: `Product.publishedAt`; `DateTime` (nullable in the schema) — null on an unpublished product
 	 */
 	shopifyPublishedAt: InstantColumn | null;
 	/**
-	 * SOURCE instant: `Product.updatedAt`; `DateTime!`, measured 49/49. Prefixed `shopify` for the same reason as `shopifyCreatedAt`. NOT a watermark — this family is a whole-set refresh and reads every product every run
+	 * SOURCE instant: `Product.updatedAt`; `DateTime!`. Prefixed `shopify` for the same reason as `shopifyCreatedAt`. NOT a watermark — this family is a whole-set refresh and reads every product every run
 	 */
 	shopifyUpdatedAt: InstantColumn;
 	/**
-	 * `Product.status`; `ProductStatus!`, measured 49/49 with 2 distinct values. Schema.String and NOT Schema.Literal on purpose: Shopify may add an enum member in any quarterly version, and a Literal turns that into an ingest failure on a row we could otherwise have stored (the same call `tfl_orders_v1__Order` made for `financialStatus`)
+	 * `Product.status`; `ProductStatus!`. Schema.String and NOT Schema.Literal on purpose: Shopify may add an enum member in any quarterly version, and a Literal turns that into an ingest failure on a row we could otherwise have stored (the same call `tfl_orders_v1__Order` made for `financialStatus`)
 	 */
 	status: string;
 	/**
-	 * `Product.title`; `String!`, measured 49/49
+	 * `Product.title`; `String!`
 	 */
 	title: string;
 	/**
-	 * `Product.totalInventory`; `Int!`, measured 49/49
+	 * `Product.totalInventory`; `Int!`
 	 */
 	totalInventory: number;
 	/**
@@ -4811,7 +5360,7 @@ export interface DbTable_shopify_products_v1__Product {
 	 */
 	updatedAt: InstantColumn;
 	/**
-	 * `Product.vendor`; `String!`, measured 49/49
+	 * `Product.vendor`; `String!`
 	 */
 	vendor: string;
 }
@@ -4827,11 +5376,11 @@ export interface DbTable_shopify_products_v1__Product {
  */
 export interface DbTable_shopify_products_v1__ProductVariant {
 	/**
-	 * `ProductVariant.barcode`; `String`, MEASURED null on 408 of 445 rows
+	 * `ProductVariant.barcode`; `String`, often null
 	 */
 	barcode: string | null;
 	/**
-	 * `ProductVariant.compareAtPrice`; `Money` (nullable) and MEASURED null on 420 of 445 rows. Same exact-decimal treatment as `price`, denominated in `currencyCode`
+	 * `ProductVariant.compareAtPrice`; `Money` (nullable) and usually null. Same exact-decimal treatment as `price`, denominated in `currencyCode`
 	 */
 	compareAtPrice: Numeric | null;
 	/**
@@ -4851,23 +5400,23 @@ export interface DbTable_shopify_products_v1__ProductVariant {
 	 */
 	id: Int8;
 	/**
-	 * The inventory item's numeric id, parsed out of `ProductVariant.inventoryItem.id`; `InventoryItem!` in the schema, measured 445/445. The join key to `shopify_inventory_v1__InventoryLevel.inventoryItemId`
+	 * The inventory item's numeric id, parsed out of `ProductVariant.inventoryItem.id`; `InventoryItem!` in the schema. The join key to `shopify_inventory_v1__InventoryLevel.inventoryItemId`
 	 */
 	inventoryItemId: Int8;
 	/**
-	 * `ProductVariant.inventoryQuantity`; `Int` (NULLABLE in the schema — Shopify returns none for an untracked variant) though measured 445/445 here
+	 * `ProductVariant.inventoryQuantity`; `Int` (NULLABLE in the schema — Shopify returns none for an untracked variant)
 	 */
 	inventoryQuantity: number | null;
 	/**
-	 * `ProductVariant.position` within its product; `Int!`, measured 445/445
+	 * `ProductVariant.position` within its product; `Int!`
 	 */
 	position: number;
 	/**
-	 * `ProductVariant.price`; `Money!`, measured 445/445. An exact decimal STRING stored NUMERIC, never a float. Denominated in `currencyCode`
+	 * `ProductVariant.price`; `Money!`. An exact decimal STRING stored NUMERIC, never a float. Denominated in `currencyCode`
 	 */
 	price: Numeric;
 	/**
-	 * The parent Product's id, parsed out of the bulk JSONL's `__parentId`. NOT a selectable GraphQL field. Measured 445/445; a variant without one is a decode failure. Joins to `shopify_products_v1__Product.id`
+	 * The parent Product's id, parsed out of the bulk JSONL's `__parentId`. NOT a selectable GraphQL field. Always present; a variant without one is a decode failure. Joins to `shopify_products_v1__Product.id`
 	 */
 	productId: Int8;
 	/**
@@ -4875,19 +5424,19 @@ export interface DbTable_shopify_products_v1__ProductVariant {
 	 */
 	shopId: Int8;
 	/**
-	 * SOURCE instant: `ProductVariant.createdAt`; `DateTime!`, measured 445/445. Prefixed `shopify` so it cannot be confused with our own `createdAt` bookkeeping column
+	 * SOURCE instant: `ProductVariant.createdAt`; `DateTime!`. Prefixed `shopify` so it cannot be confused with our own `createdAt` bookkeeping column
 	 */
 	shopifyCreatedAt: InstantColumn;
 	/**
-	 * SOURCE instant: `ProductVariant.updatedAt`; `DateTime!`, measured 445/445. NOT a watermark — this family is a whole-set refresh
+	 * SOURCE instant: `ProductVariant.updatedAt`; `DateTime!`. NOT a watermark — this family is a whole-set refresh
 	 */
 	shopifyUpdatedAt: InstantColumn;
 	/**
-	 * `ProductVariant.sku`; `String` (NULLABLE in the schema) though measured 445/445 on this store. Kept nullable because one catalogue's SKU discipline is not evidence about every merchant's, and a variant genuinely may carry none
+	 * `ProductVariant.sku`; `String` (NULLABLE in the schema) though usually filled. Kept nullable because one catalogue's SKU discipline is not evidence about every merchant's, and a variant genuinely may carry none
 	 */
 	sku: string | null;
 	/**
-	 * `ProductVariant.title`; `String!`, measured 445/445 (commonly "Default Title")
+	 * `ProductVariant.title`; `String!` (commonly "Default Title")
 	 */
 	title: string;
 	/**
@@ -4908,7 +5457,7 @@ export interface DbTable_shopify_products_v1__ProductVariant {
  */
 export interface DbTable_shopify_reports_v1__SalesDaily {
 	/**
-	 * `MONEY`. Zero on every one of the 1,201 measured days on this store
+	 * `MONEY`. May be zero on every day of a store
 	 */
 	additional_fees: Numeric;
 	/**
@@ -4916,7 +5465,7 @@ export interface DbTable_shopify_reports_v1__SalesDaily {
 	 */
 	average_order_value: Numeric | null;
 	/**
-	 * `MONEY`, and it depends on the merchant maintaining a cost per variant — a store that does not will read zero here rather than null. Measured negative on 1 of 1,201 days, so the column admits either sign
+	 * `MONEY`, and it depends on the merchant maintaining a cost per variant — a store that does not will read zero here rather than null. Can be negative, so the column admits either sign
 	 */
 	cost_of_goods_sold: Numeric;
 	/**
@@ -4928,23 +5477,23 @@ export interface DbTable_shopify_reports_v1__SalesDaily {
 	 */
 	customers: Numeric;
 	/**
-	 * The ShopifyQL `day` dimension: a SHOP-LOCAL calendar day as `YYYY-MM-DD`, measured well-formed on 1,201/1,201 rows. `Schema.String` plus postgresType DATE and NOT `Schema.DateTimeUtc`, following `tfl_products_v1__WarehouseInventory.localdate`: a calendar day is not an instant, and a TIMESTAMPTZ column would reintroduce the timezone ambiguity this column exists to remove. Which day a sale falls on is decided by the shop's own timezone, which is why the task is DAILY_ZONED
+	 * The ShopifyQL `day` dimension: a SHOP-LOCAL calendar day as `YYYY-MM-DD`. `Schema.String` plus postgresType DATE and NOT `Schema.DateTimeUtc`, following `tfl_products_v1__WarehouseInventory.localdate`: a calendar day is not an instant, and a TIMESTAMPTZ column would reintroduce the timezone ambiguity this column exists to remove. Which day a sale falls on is decided by the shop's own timezone, which is why the task is DAILY_ZONED
 	 */
 	day: PlainDateColumn;
 	/**
-	 * `MONEY`. NEGATIVE in normal operation — measured negative on 1,195 of 1,201 days. The sign is the source's and is not normalised here
+	 * `MONEY`. NEGATIVE in normal operation. The sign is the source's and is not normalised here
 	 */
 	discounts: Numeric;
 	/**
-	 * `MONEY`. Zero on every one of the 1,201 measured days on this store; the column exists because the dataset declares it, not because it has ever been non-zero here
+	 * `MONEY`. May be zero on every day of a store; the column exists because the dataset declares it, not because it has been seen non-zero
 	 */
 	duties: Numeric;
 	/**
-	 * `MONEY`. Zero on every one of the 1,201 measured days on this store
+	 * `MONEY`. May be zero on every day of a store
 	 */
 	gift_card_discounts: Numeric;
 	/**
-	 * `PERCENT` as a UNIT FRACTION. Derived by the source, and it can exceed 1.0 when the cost data behind `cost_of_goods_sold` is incomplete — 1.215 was measured on 2026-08-17. Stored as returned rather than clamped. NULLABLE, and the ONE column in this family where a null has actually been seen: it is `gross_profit` over `net_sales`, and the store that produced it returned no value for 2026-08-02
+	 * `PERCENT` as a UNIT FRACTION. Derived by the source, and it can exceed 1.0 when the cost data behind `cost_of_goods_sold` is incomplete. Stored as returned rather than clamped. NULLABLE, and the ONE column in this family where a null has actually been seen: it is `gross_profit` over `net_sales`, and the source can return no value for a day
 	 */
 	gross_margin: Numeric | null;
 	/**
@@ -4964,7 +5513,7 @@ export interface DbTable_shopify_reports_v1__SalesDaily {
 	 */
 	new_customers: Numeric;
 	/**
-	 * `INTEGER`, carried as an exact decimal string in NUMERIC like every other measure here. ShopifyQL's own order count, which uses a DIFFERENT inclusion rule from a row count over `shopify_orders_v1__Order` — 42 against 43 for 2026-08-10 on the shakedown store
+	 * `INTEGER`, carried as an exact decimal string in NUMERIC like every other measure here. ShopifyQL's own order count, which uses a DIFFERENT inclusion rule from a row count over `shopify_orders_v1__Order`, so the two can differ by a few orders on a day
 	 */
 	orders: Numeric;
 	/**
@@ -4976,7 +5525,7 @@ export interface DbTable_shopify_reports_v1__SalesDaily {
 	 */
 	returning_customers: Numeric;
 	/**
-	 * `MONEY`. NEGATIVE in normal operation — measured negative on 557 of 1,201 days. This is the measure most responsible for a settled day's numbers moving later, and therefore for the re-fetch window in the table header
+	 * `MONEY`. NEGATIVE in normal operation. This is the measure most responsible for a settled day's numbers moving later, and therefore for the re-fetch window in the table header
 	 */
 	returns: Numeric;
 	/**
@@ -4984,11 +5533,11 @@ export interface DbTable_shopify_reports_v1__SalesDaily {
 	 */
 	shopId: Int8;
 	/**
-	 * `MONEY`. Measured negative on 7 of 1,201 days, so the column admits either sign
+	 * `MONEY`. Can be negative, so the column admits either sign
 	 */
 	taxes: Numeric;
 	/**
-	 * `MONEY`. Zero on every one of the 1,201 measured days on this store
+	 * `MONEY`. May be zero on every day of a store
 	 */
 	tips: Numeric;
 	/**
@@ -5028,7 +5577,7 @@ export interface DbTable_shopify_reports_v1__SessionsDaily {
 	 */
 	createdAt: InstantColumn;
 	/**
-	 * The ShopifyQL `day` dimension: a SHOP-LOCAL calendar day as `YYYY-MM-DD`, measured well-formed on 1,201/1,201 rows. `Schema.String` plus postgresType DATE and NOT `Schema.DateTimeUtc`, for the reason given in `shopify_reports_v1__SalesDaily.ts`. Joins to `shopify_reports_v1__SalesDaily.day` for the same shop, which is how sessions and sales are read together
+	 * The ShopifyQL `day` dimension: a SHOP-LOCAL calendar day as `YYYY-MM-DD`. `Schema.String` plus postgresType DATE and NOT `Schema.DateTimeUtc`, for the reason given in `shopify_reports_v1__SalesDaily.ts`. Joins to `shopify_reports_v1__SalesDaily.day` for the same shop, which is how sessions and sales are read together
 	 */
 	day: PlainDateColumn;
 	/**
@@ -5075,7 +5624,7 @@ export interface DbTable_shopify_shop_v1__Shop {
 	 */
 	createdAt: InstantColumn;
 	/**
-	 * SOURCE: `Shop.currencyCode`. The currency of every scalar Money field Shopify returns WITHOUT one, notably `shopify_products_v1__ProductVariant.price`. It does NOT apply to an order's amounts: those carry their own code each, and 188 of 50,085 orders were measured in a second currency
+	 * SOURCE: `Shop.currencyCode`. The currency of every scalar Money field Shopify returns WITHOUT one, notably `shopify_products_v1__ProductVariant.price`. It does NOT apply to an order's amounts: those carry their own code each, and some orders are in a different currency
 	 */
 	currencyCode: string;
 	/**
@@ -5115,7 +5664,7 @@ export interface DbTable_tfl_asns_v1__Asn {
 	 */
 	asnNumber: string | null;
 	/**
-	 * `asn.asnStatusId`; MEASURED 1-4. The API exposes no matching status text
+	 * `asn.asnStatusId`; a small integer code. The API exposes no matching status text
 	 */
 	asnStatusId: number;
 	/**
@@ -5123,15 +5672,15 @@ export interface DbTable_tfl_asns_v1__Asn {
 	 */
 	carrier: string | null;
 	/**
-	 * `asn.carrierWebAddress`; MEASURED null on 195/263 rows
+	 * `asn.carrierWebAddress`; usually null
 	 */
 	carrierWebAddress: string | null;
 	/**
-	 * `asn.categoryId`; MEASURED constant 1 across the corpus
+	 * `asn.categoryId`; a small integer code, constant so far
 	 */
 	categoryId: number;
 	/**
-	 * SovConnector.connectorId of the thefulfillmentlab connector that fetched this ASN
+	 * The Databrill connector id of The Fulfillment Lab connector that fetched this ASN
 	 */
 	connectorId: string;
 	/**
@@ -5139,7 +5688,7 @@ export interface DbTable_tfl_asns_v1__Asn {
 	 */
 	createdAt: InstantColumn;
 	/**
-	 * `asn.deliveredQuantity`; MEASURED integral, 0-150
+	 * `asn.deliveredQuantity`; MEASURED integral
 	 */
 	deliveredQuantity: number;
 	/**
@@ -5151,23 +5700,23 @@ export interface DbTable_tfl_asns_v1__Asn {
 	 */
 	doc: Json;
 	/**
-	 * SOURCE ZONE: GENUINELY UNMEASURED — stored VERBATIM as TEXT and NEVER parsed or timezone-converted. `asn.estimatedDeliveryDate`. MEASURED only that it is round-hour (06:00, 16:00) on 263/263 rows with no fractional seconds and no designator, which reads as a human-scheduled appointment slot rather than a system timestamp; it matches none of the serializer families we did measure. A zone guess here would produce a plausible-looking lie in a column with no ALTER path
+	 * SOURCE ZONE: GENUINELY UNMEASURED — stored VERBATIM as TEXT and NEVER parsed or timezone-converted. `asn.estimatedDeliveryDate`. MEASURED only that it is round-hour (06:00, 16:00) with no fractional seconds and no designator, which reads as a human-scheduled appointment slot rather than a system timestamp; it matches none of the serializer families we did measure. A zone guess here would produce a plausible-looking lie in a column with no ALTER path
 	 */
 	estimatedDeliveryDate: string | null;
 	/**
-	 * `asn.expectedQuantity`; MEASURED integral, 0-150
+	 * `asn.expectedQuantity`; MEASURED integral
 	 */
 	expectedQuantity: number;
 	/**
-	 * `asn.id`, GFS's own ASN id. MEASURED unique 263/263
+	 * `asn.id`, GFS's own ASN id. Unique
 	 */
 	id: number;
 	/**
-	 * `asn.receivedQuantity` at header level; MEASURED 0 on every corpus row
+	 * `asn.receivedQuantity` at header level; MEASURED zero on every row so far
 	 */
 	receivedQuantity: number;
 	/**
-	 * `asn.referenceNumber`; MEASURED null on 62/263 rows
+	 * `asn.referenceNumber`; often null
 	 */
 	referenceNumber: string | null;
 	/**
@@ -5175,7 +5724,7 @@ export interface DbTable_tfl_asns_v1__Asn {
 	 */
 	shippingContainer: string | null;
 	/**
-	 * `asn.specialInstructions`; MEASURED null on 248/263 rows
+	 * `asn.specialInstructions`; usually null
 	 */
 	specialInstructions: string | null;
 	/**
@@ -5187,7 +5736,7 @@ export interface DbTable_tfl_asns_v1__Asn {
 	 */
 	updatedAt: InstantColumn;
 	/**
-	 * `asn.warehouseId`; MEASURED 1 and 11, which is the standing evidence that this account will not stay single-warehouse and why `warehouseId` is in the warehouse-inventory key
+	 * `asn.warehouseId`; more than one value has been seen, which is the standing evidence that an account will not stay single-warehouse and why `warehouseId` is in the warehouse-inventory key
 	 */
 	warehouseId: number;
 }
@@ -5207,7 +5756,7 @@ export interface DbTable_tfl_asns_v1__AsnItem {
 	 */
 	asnId: number;
 	/**
-	 * SovConnector.connectorId of the thefulfillmentlab connector that fetched this ASN item
+	 * The Databrill connector id of The Fulfillment Lab connector that fetched this ASN item
 	 */
 	connectorId: string;
 	/**
@@ -5227,7 +5776,7 @@ export interface DbTable_tfl_asns_v1__AsnItem {
 	 */
 	id: number;
 	/**
-	 * `products[].itemId` — the PRODUCT reference, joining to `tfl_products_v1__Inventory.productId`. MEASURED: ASN 6741's itemId 21759 is a real productId while its `id` is 10799, so the two are different numbers with different meanings. Nullable because the `insert` and `container` element shapes are unobserved
+	 * `products[].itemId` — the PRODUCT reference, joining to `tfl_products_v1__Inventory.productId`. MEASURED: a line's `itemId` is a real productId while its `id` is a different number, so the two have different meanings. Nullable because the `insert` and `container` element shapes are unobserved
 	 */
 	itemId: number | null;
 	/**
@@ -5260,7 +5809,7 @@ export interface DbTable_tfl_inventorySummary_v1__ProductWarehouse {
 	 */
 	beginningInventory: number;
 	/**
-	 * SovConnector.connectorId of the thefulfillmentlab connector that fetched this summary row
+	 * The Databrill connector id of The Fulfillment Lab connector that fetched this summary row
 	 */
 	connectorId: string;
 	/**
@@ -5272,7 +5821,7 @@ export interface DbTable_tfl_inventorySummary_v1__ProductWarehouse {
 	 */
 	doc: Json;
 	/**
-	 * The window's inclusive last `yyyy-MM-dd` calendar day, ALWAYS an EASTERN (America/New_York) calendar month bound (e.g. 2026-07-31), derived in Eastern and never in UTC, on the same reasoning as `startDate`. Asked for in full even mid-month: MEASURED (exp07), a window clamped to today differs from the full-month window on 46 of 84 rows, every one with LOWER `shipped`, so clamping silently drops activity. Stored DATE, not TIMESTAMPTZ
+	 * The window's inclusive last `yyyy-MM-dd` calendar day, ALWAYS an EASTERN (America/New_York) calendar month bound (e.g. 2026-07-31), derived in Eastern and never in UTC, on the same reasoning as `startDate`. Asked for in full even mid-month: MEASURED, a window clamped to today differs from the full-month window on many rows, every one with LOWER `shipped`, so clamping silently drops activity. Stored DATE, not TIMESTAMPTZ
 	 */
 	endDate: PlainDateColumn;
 	/**
@@ -5280,11 +5829,11 @@ export interface DbTable_tfl_inventorySummary_v1__ProductWarehouse {
 	 */
 	endingInventory: number;
 	/**
-	 * `warehouseSummaries[].miscellaneousAdjustments`. GOES NEGATIVE — MEASURED -300 to 68. INTEGER is signed; no constraint, coercion or clamp may reject or alter a negative value
+	 * `warehouseSummaries[].miscellaneousAdjustments`. GOES NEGATIVE. INTEGER is signed; no constraint, coercion or clamp may reject or alter a negative value
 	 */
 	miscellaneousAdjustments: number;
 	/**
-	 * `warehouseSummaries[].otsShipments`; movement attributed to off-the-shelf shipments. GOES NEGATIVE — MEASURED as low as -6000. INTEGER is signed; do not clamp
+	 * `warehouseSummaries[].otsShipments`; movement attributed to off-the-shelf shipments. GOES NEGATIVE, and by thousands of units. INTEGER is signed; do not clamp
 	 */
 	otsShipments: number;
 	/**
@@ -5292,7 +5841,7 @@ export interface DbTable_tfl_inventorySummary_v1__ProductWarehouse {
 	 */
 	productId: number | null;
 	/**
-	 * `row.productName` STORED VERBATIM — no trim, no case folding, no whitespace collapsing, no unicode normalisation. It is the ONLY identity this payload carries, and any normalisation would stop the stored key matching tomorrow's payload, breaking the upsert-in-place identity irreparably under the no-ALTER constraint. MEASURED max length 55 characters
+	 * `row.productName` STORED VERBATIM — no trim, no case folding, no whitespace collapsing, no unicode normalisation. It is the ONLY identity this payload carries, and any normalisation would stop the stored key matching tomorrow's payload, breaking the upsert-in-place identity irreparably under the no-ALTER constraint
 	 */
 	productName: string;
 	/**
@@ -5344,7 +5893,7 @@ export interface DbTable_tfl_orders_v1__Order {
 	 */
 	city: string | null;
 	/**
-	 * SovConnector.connectorId of the thefulfillmentlab connector that fetched this order
+	 * The Databrill connector id of The Fulfillment Lab connector that fetched this order
 	 */
 	connectorId: string;
 	/**
@@ -5356,7 +5905,7 @@ export interface DbTable_tfl_orders_v1__Order {
 	 */
 	createdAt: InstantColumn;
 	/**
-	 * `order.dhlEcomNumber`; MEASURED null on 16/337 rows
+	 * `order.dhlEcomNumber`; null on unshipped orders
 	 */
 	dhlEcomNumber: string | null;
 	/**
@@ -5364,31 +5913,31 @@ export interface DbTable_tfl_orders_v1__Order {
 	 */
 	doc: Json;
 	/**
-	 * `order.financialStatus`. MEASURED distinct=1 with only "paid" ever observed, which makes a refund or unpaid state plausible and merely unobserved — hence nullable, and hence NOT a Schema.Literal
+	 * `order.financialStatus`. Only "paid" has been observed, which makes a refund or unpaid state plausible and merely unobserved — hence nullable, and hence NOT a Schema.Literal
 	 */
 	financialStatus: string | null;
 	/**
-	 * SOURCE ZONE: UTC, parsed directly with NO localisation. `order.createdAt`, prefixed `gfs` so it does not collide with our own `createdAt` bookkeeping column. MEASURED (Q05): it runs exactly 4h ahead of `orderDate` in July and 5h ahead in January, on 100% and 98% of rows respectively — the signature of a UTC stamp beside an Eastern one
+	 * SOURCE ZONE: UTC, parsed directly with NO localisation. `order.createdAt`, prefixed `gfs` so it does not collide with our own `createdAt` bookkeeping column. MEASURED: it runs exactly 4h ahead of `orderDate` in July and 5h ahead in January on nearly every row — the signature of a UTC stamp beside an Eastern one
 	 */
 	gfsCreatedAt: InstantColumn;
 	/**
-	 * SOURCE ZONE: US EASTERN WALL TIME (America/New_York) BY DECREE, localised on ingestion — and the source was MEASURED MIXED. Q05 found `order.modifiedAt`'s offset splitting three ways in winter: Eastern for cart-side stamps, UTC when GFS itself touched the row. So SOME STORED VALUES ARE KNOWABLY DISPLACED BY 4-5 HOURS. THIS COLUMN MUST NEVER BE USED AS A WATERMARK OR IN ANY SYNC LOGIC. The raw string is kept verbatim in `doc` for anyone who needs to re-derive it
+	 * SOURCE ZONE: US EASTERN WALL TIME (America/New_York) BY DECREE, localised on ingestion — and the source was MEASURED MIXED: `order.modifiedAt`'s offset splits three ways in winter, Eastern for cart-side stamps, UTC when GFS itself touched the row. So SOME STORED VALUES ARE KNOWABLY DISPLACED BY 4-5 HOURS. THIS COLUMN MUST NEVER BE USED AS A WATERMARK OR IN ANY SYNC LOGIC. The raw string is kept verbatim in `doc` for anyone who needs to re-derive it
 	 */
 	gfsModifiedAt: InstantColumn | null;
 	/**
-	 * GFS's own integer order id; `order.id`. MEASURED unique 337/337
+	 * GFS's own integer order id; `order.id`. Unique
 	 */
 	id: number;
 	/**
-	 * SOURCE ZONE: US EASTERN WALL TIME (America/New_York), localised on ingestion. `order.orderDate` carries NO offset designator, so nothing in the value reveals its zone. MEASURED (Q05) by differencing against `order.createdAt`: exactly 4h apart in July and 5h in January, which is the America/New_York offset pair. The raw string survives in `doc`, so this decision is reversible without a re-fetch
+	 * SOURCE ZONE: US EASTERN WALL TIME (America/New_York), localised on ingestion. `order.orderDate` carries NO offset designator, so nothing in the value reveals its zone. MEASURED by differencing against `order.createdAt`: exactly 4h apart in July and 5h in January, which is the America/New_York offset pair. The raw string survives in `doc`, so this decision is reversible without a re-fetch
 	 */
 	orderDate: InstantColumn;
 	/**
-	 * SOURCE ZONE: US EASTERN WALL TIME (America/New_York), localised on ingestion, on the same Q05 measurement as `orderDate`. `order.shipDate`; MEASURED null on 16/337 rows
+	 * SOURCE ZONE: US EASTERN WALL TIME (America/New_York), localised on ingestion, on the same measurement as `orderDate`. `order.shipDate`; null on unshipped orders
 	 */
 	shipDate: InstantColumn | null;
 	/**
-	 * `order.shipmentId`, joining to `tfl_shipments_v1__Shipment.id` by convention (no declared FK). Non-null on 337/337 but RELAXED to nullable: an unshipped order plausibly carries none
+	 * `order.shipmentId`, joining to `tfl_shipments_v1__Shipment.id` by convention (no declared FK). Non-null in practice but RELAXED to nullable: an unshipped order plausibly carries none
 	 */
 	shipmentId: number | null;
 	/**
@@ -5396,7 +5945,7 @@ export interface DbTable_tfl_orders_v1__Order {
 	 */
 	shipMethod: string | null;
 	/**
-	 * `order.state`; MEASURED null on 1/337 rows (a non-US address)
+	 * `order.state`; null on a non-US address
 	 */
 	state: string | null;
 	/**
@@ -5404,15 +5953,15 @@ export interface DbTable_tfl_orders_v1__Order {
 	 */
 	status: string | null;
 	/**
-	 * `order.storeName`. Non-null on 337/337 corpus rows but RELAXED to nullable: one account's storefront naming is not evidence about every account's
+	 * `order.storeName`. Non-null in practice but RELAXED to nullable: one account's storefront naming is not evidence about every account's
 	 */
 	storeName: string | null;
 	/**
-	 * `order.tracking`; MEASURED null on 16/337 rows (unshipped orders)
+	 * `order.tracking`; null on unshipped orders
 	 */
 	tracking: string | null;
 	/**
-	 * `order.trackingUrl`; MEASURED null on 16/337 rows
+	 * `order.trackingUrl`; null on unshipped orders
 	 */
 	trackingUrl: string | null;
 	/**
@@ -5420,11 +5969,11 @@ export interface DbTable_tfl_orders_v1__Order {
 	 */
 	updatedAt: InstantColumn;
 	/**
-	 * `order.warehouseId`; MEASURED null on 2/337 rows
+	 * `order.warehouseId`; occasionally null
 	 */
 	warehouseId: number | null;
 	/**
-	 * `order.warehouseName`; MEASURED null on 2/337 rows
+	 * `order.warehouseName`; occasionally null
 	 */
 	warehouseName: string | null;
 }
@@ -5440,7 +5989,7 @@ export interface DbTable_tfl_orders_v1__Order {
  */
 export interface DbTable_tfl_orders_v1__OrderItem {
 	/**
-	 * SovConnector.connectorId of the thefulfillmentlab connector that fetched this order item
+	 * The Databrill connector id of The Fulfillment Lab connector that fetched this order item
 	 */
 	connectorId: string;
 	/**
@@ -5452,15 +6001,15 @@ export interface DbTable_tfl_orders_v1__OrderItem {
 	 */
 	doc: Json;
 	/**
-	 * SOURCE ZONE: UTC, parsed directly with NO localisation. `items[].createdAt`. MEASURED (eval03) within 0-7 ms of the parent order's `createdAt` on 14/14 rows, and that parent field is itself measured UTC. Prefixed `gfs` so it does not collide with our own `createdAt` bookkeeping column
+	 * SOURCE ZONE: UTC, parsed directly with NO localisation. `items[].createdAt`. MEASURED within milliseconds of the parent order's `createdAt`, and that parent field is itself measured UTC. Prefixed `gfs` so it does not collide with our own `createdAt` bookkeeping column
 	 */
 	gfsCreatedAt: InstantColumn;
 	/**
-	 * SOURCE ZONE: UTC, parsed directly with NO localisation — DELIBERATELY UNLIKE the order-level `gfsModifiedAt`, which is Eastern. ONE PAYLOAD CARRIES BOTH READINGS: MEASURED (eval03), `items[].modifiedAt` sits within milliseconds of the order's UTC `createdAt` on 14/14 rows while the same rows' order-level `modifiedAt` reads four hours behind. Localising this value from America/New_York would shift it 4-5 hours
+	 * SOURCE ZONE: UTC, parsed directly with NO localisation — DELIBERATELY UNLIKE the order-level `gfsModifiedAt`, which is Eastern. ONE PAYLOAD CARRIES BOTH READINGS: MEASURED, `items[].modifiedAt` sits within milliseconds of the order's UTC `createdAt` while the same rows' order-level `modifiedAt` reads four hours behind. Localising this value from America/New_York would shift it 4-5 hours
 	 */
 	gfsModifiedAt: InstantColumn;
 	/**
-	 * `items[].id`, the line's own GFS id. MEASURED unique across the corpus
+	 * `items[].id`, the line's own GFS id. Unique across orders
 	 */
 	id: number;
 	/**
@@ -5472,11 +6021,11 @@ export interface DbTable_tfl_orders_v1__OrderItem {
 	 */
 	orderId: number;
 	/**
-	 * `items[].quantity`; MEASURED integral (1-5) across the detail corpus
+	 * `items[].quantity`; MEASURED integral
 	 */
 	quantity: number;
 	/**
-	 * `items[].retailValue`, the line's retail amount. MEASURED NON-INTEGRAL (1.47, 41.79), so Schema.Int would truncate it. Stored DOUBLE PRECISION rather than NUMERIC: the repo's position is that money-adjacent analytics values take DOUBLE PRECISION, which postgres.js returns as a real JS number, while NUMERIC comes back as a string
+	 * `items[].retailValue`, the line's retail amount. MEASURED NON-INTEGRAL, so Schema.Int would truncate it. Stored DOUBLE PRECISION rather than NUMERIC: the repo's position is that money-adjacent analytics values take DOUBLE PRECISION, which postgres.js returns as a real JS number, while NUMERIC comes back as a string
 	 */
 	retailValue: number;
 	/**
@@ -5503,7 +6052,7 @@ export interface DbTable_tfl_otsShipments_v1__OtsShipment {
 	 */
 	category: string | null;
 	/**
-	 * `otsShipment.categoryId`; MEASURED 1-3
+	 * `otsShipment.categoryId`; a small integer code
 	 */
 	categoryId: number;
 	/**
@@ -5511,11 +6060,11 @@ export interface DbTable_tfl_otsShipments_v1__OtsShipment {
 	 */
 	clientReferenceId: string | null;
 	/**
-	 * SOURCE ZONE: UTC, MEASURED — the detail route serialises an explicit `Z` (eval03), which the list route truncates. `otsShipment.completedDate`; MEASURED null on 16/371 rows
+	 * SOURCE ZONE: UTC, MEASURED — the detail route serialises an explicit `Z`, which the list route truncates. `otsShipment.completedDate`; null on an incomplete shipment
 	 */
 	completedDate: InstantColumn | null;
 	/**
-	 * SovConnector.connectorId of the thefulfillmentlab connector that fetched this OTS shipment
+	 * The Databrill connector id of The Fulfillment Lab connector that fetched this OTS shipment
 	 */
 	connectorId: string;
 	/**
@@ -5539,7 +6088,7 @@ export interface DbTable_tfl_otsShipments_v1__OtsShipment {
 	 */
 	hubspotTicketNumber: string | null;
 	/**
-	 * `otsShipment.id`, GFS's own id. MEASURED unique 371/371
+	 * `otsShipment.id`, GFS's own id. Unique
 	 */
 	id: number;
 	/**
@@ -5547,7 +6096,7 @@ export interface DbTable_tfl_otsShipments_v1__OtsShipment {
 	 */
 	status: string | null;
 	/**
-	 * `otsShipment.statusId`; MEASURED 3-5
+	 * `otsShipment.statusId`; a small integer code
 	 */
 	statusId: number;
 	/**
@@ -5559,7 +6108,7 @@ export interface DbTable_tfl_otsShipments_v1__OtsShipment {
 	 */
 	warehouse: string | null;
 	/**
-	 * `otsShipment.warehouseId`; MEASURED constant 1 across the corpus
+	 * `otsShipment.warehouseId`; a small integer code, constant so far
 	 */
 	warehouseId: number;
 }
@@ -5575,7 +6124,7 @@ export interface DbTable_tfl_otsShipments_v1__OtsShipment {
  */
 export interface DbTable_tfl_otsShipments_v1__OtsShipmentItem {
 	/**
-	 * SovConnector.connectorId of the thefulfillmentlab connector that fetched this OTS item
+	 * The Databrill connector id of The Fulfillment Lab connector that fetched this OTS item
 	 */
 	connectorId: string;
 	/**
@@ -5623,11 +6172,11 @@ export interface DbTable_tfl_products_v1__Inventory {
 	 */
 	allocated: number;
 	/**
-	 * `product.available`, sellable on hand. MEASURED integral, 0-13212
+	 * `product.available`, sellable on hand. MEASURED integral
 	 */
 	available: number;
 	/**
-	 * SovConnector.connectorId of the thefulfillmentlab connector that fetched this product
+	 * The Databrill connector id of The Fulfillment Lab connector that fetched this product
 	 */
 	connectorId: string;
 	/**
@@ -5639,15 +6188,15 @@ export interface DbTable_tfl_products_v1__Inventory {
 	 */
 	doc: Json;
 	/**
-	 * `product.productId`, GFS's own product id. MEASURED unique 45/45
+	 * `product.productId`, GFS's own product id. Unique
 	 */
 	productId: number;
 	/**
-	 * `product.productName`. The only clean product name in the API — MEASURED 45 distinct names over 45 rows. Nullable per the connector-wide rule that a promoted string is nullable unless the corpus proves otherwise, since a NOT NULL violation would abort the whole snapshot page rather than one row
+	 * `product.productName`. The only clean product name in the API, and distinct per product as observed. Nullable per the connector-wide rule that a promoted string is nullable unless the data proves otherwise, since a NOT NULL violation would abort the whole snapshot page rather than one row
 	 */
 	productName: string | null;
 	/**
-	 * `product.quantity`, total on hand. MEASURED integral, 0-13216
+	 * `product.quantity`, total on hand. MEASURED integral
 	 */
 	quantity: number;
 	/**
@@ -5665,7 +6214,7 @@ export interface DbTable_tfl_products_v1__Inventory {
  */
 export interface DbTable_tfl_products_v1__Sku {
 	/**
-	 * SovConnector.connectorId of the thefulfillmentlab connector that fetched this SKU
+	 * The Databrill connector id of The Fulfillment Lab connector that fetched this SKU
 	 */
 	connectorId: string;
 	/**
@@ -5677,7 +6226,7 @@ export interface DbTable_tfl_products_v1__Sku {
 	 */
 	doc: Json;
 	/**
-	 * `sku.sku`, the merchant's SKU string. MEASURED unique 218/218 and used as the identity
+	 * `sku.sku`, the merchant's SKU string. Unique, and used as the identity
 	 */
 	sku: string;
 	/**
@@ -5701,7 +6250,7 @@ export interface DbTable_tfl_products_v1__Sku {
  */
 export interface DbTable_tfl_products_v1__SkuProduct {
 	/**
-	 * SovConnector.connectorId of the thefulfillmentlab connector that fetched this mapping
+	 * The Databrill connector id of The Fulfillment Lab connector that fetched this mapping
 	 */
 	connectorId: string;
 	/**
@@ -5717,11 +6266,11 @@ export interface DbTable_tfl_products_v1__SkuProduct {
 	 */
 	productId: number;
 	/**
-	 * `sku.products[].productName`, promoted for readability only. NOT an identity and NOT joinable: two productIds were MEASURED sharing the name "Shipping Protection" inside this array. Use `productId` and `tfl_products_v1__Inventory` for anything real
+	 * `sku.products[].productName`, promoted for readability only. NOT an identity and NOT joinable: two productIds have been seen sharing one name inside this array. Use `productId` and `tfl_products_v1__Inventory` for anything real
 	 */
 	productName: string | null;
 	/**
-	 * `sku.products[].qtyMultiplier` — how many units of this product one unit of the SKU ships, i.e. how bundles are expressed. MEASURED integral, range 1-4 over 210 elements
+	 * `sku.products[].qtyMultiplier` — how many units of this product one unit of the SKU ships, i.e. how bundles are expressed. MEASURED integral
 	 */
 	qtyMultiplier: number;
 	/**
@@ -5753,7 +6302,7 @@ export interface DbTable_tfl_products_v1__WarehouseInventory {
 	 */
 	available: number;
 	/**
-	 * SovConnector.connectorId of the thefulfillmentlab connector that fetched this snapshot row
+	 * The Databrill connector id of The Fulfillment Lab connector that fetched this snapshot row
 	 */
 	connectorId: string;
 	/**
@@ -5800,15 +6349,15 @@ export interface DbTable_tfl_products_v1__WarehouseInventory {
  */
 export interface DbTable_tfl_shipments_v1__Shipment {
 	/**
-	 * `shipment.cartOrderIds` — the MERCHANT cart order ids this shipment covers, stored as TEXT[]. MEASURED 284 elements over 282 rows with 2 rows carrying more than one id, so multi-order shipments occur in this account and the array must not be flattened. Joins to `tfl_orders_v1__Order.cartOrderId`
+	 * `shipment.cartOrderIds` — the MERCHANT cart order ids this shipment covers, stored as TEXT[]. A shipment can carry more than one id, so multi-order shipments occur and the array must not be flattened. Joins to `tfl_orders_v1__Order.cartOrderId`
 	 */
 	cartOrderIds: string[];
 	/**
-	 * SovConnector.connectorId of the thefulfillmentlab connector that fetched this shipment
+	 * The Databrill connector id of The Fulfillment Lab connector that fetched this shipment
 	 */
 	connectorId: string;
 	/**
-	 * `shipment.containerCharge`. MEASURED non-integral, range 0.23-1; DOUBLE PRECISION
+	 * `shipment.containerCharge`. MEASURED non-integral; DOUBLE PRECISION
 	 */
 	containerCharge: number;
 	/**
@@ -5820,23 +6369,23 @@ export interface DbTable_tfl_shipments_v1__Shipment {
 	 */
 	doc: Json;
 	/**
-	 * `shipment.fulfillmentCharge`. MEASURED non-integral, range 0.95-3.45; DOUBLE PRECISION
+	 * `shipment.fulfillmentCharge`. MEASURED non-integral; DOUBLE PRECISION
 	 */
 	fulfillmentCharge: number;
 	/**
-	 * `shipment.id`, GFS's own shipment id. MEASURED unique 282/282
+	 * `shipment.id`, GFS's own shipment id. Unique
 	 */
 	id: number;
 	/**
-	 * SOURCE ZONE: US EASTERN WALL TIME (America/New_York), localised on ingestion. `shipment.shipDate` carries NO offset designator, so nothing in the value reveals its zone; MEASURED (Q05) to sit in the Eastern family alongside `order.shipDate`. The raw string survives in `doc`, so the decision is reversible without a re-fetch
+	 * SOURCE ZONE: US EASTERN WALL TIME (America/New_York), localised on ingestion. `shipment.shipDate` carries NO offset designator, so nothing in the value reveals its zone; MEASURED to sit in the Eastern family alongside `order.shipDate`. The raw string survives in `doc`, so the decision is reversible without a re-fetch
 	 */
 	shipDate: InstantColumn;
 	/**
-	 * `shipment.shippingCharge`. MEASURED non-integral, range 5.70-25.47; DOUBLE PRECISION
+	 * `shipment.shippingCharge`. MEASURED non-integral; DOUBLE PRECISION
 	 */
 	shippingCharge: number;
 	/**
-	 * `shipment.totalCharge`. MEASURED non-integral, range 6.92-29.92; DOUBLE PRECISION
+	 * `shipment.totalCharge`. MEASURED non-integral; DOUBLE PRECISION
 	 */
 	totalCharge: number;
 	/**
@@ -5854,13 +6403,13 @@ export interface DbTable_tfl_shipments_v1__Shipment {
 export interface DbTable_wmt_account_v3__profile {
 	businessRegistrationNumber: string | null;
 	/**
-	 * OURS, not from the payload: SovConnector.connectorId of the walmart_marketplace connector whose entity-match profile this is; the tenant key (a globally-unique UUIDv7, 1:1 with wsid, so wsid is not in the PK)
+	 * OURS, not from the payload: the Databrill connector id of the Walmart connector whose entity-match profile this is; the key that scopes this row to its connector (a globally unique UUIDv7, one per workspace, so no workspace column is needed in the primary key)
 	 */
 	connectorId: string;
 	countryOfIncorporation: string | null;
 	createdAt: InstantColumn;
 	/**
-	 * The verbatim entitymatchprofile response body (the `body` wrapper plus `status`). Persisted as JSONB; typed `Unknown` because no vendored API type exists to pin a struct against (see the header's `.assert.ts` note)
+	 * The verbatim entitymatchprofile response body (the `body` wrapper plus `status`). Persisted as JSONB; typed `Unknown` because Walmart publishes no API specification, so there is no generated type to assert the shape against
 	 */
 	doc: Json;
 	name: string | null;
@@ -5883,7 +6432,7 @@ export interface DbTable_wmt_account_v3__profile {
 export interface DbTable_wmt_inventory_v3__Wfs {
 	availToSellQty: number | null;
 	/**
-	 * OURS, not from the payload: SovConnector.connectorId of the walmart_marketplace connector that took the snapshot; the tenant key
+	 * OURS, not from the payload: the Databrill connector id of the Walmart connector that took the snapshot; the key that scopes this row to its connector
 	 */
 	connectorId: string;
 	createdAt: InstantColumn;
@@ -5908,7 +6457,7 @@ export interface DbTable_wmt_inventory_v3__Wfs {
 	 */
 	sku: string;
 	/**
-	 * OURS, not from the payload: the snapshot time of the latest run that touched this row. NOT IN THE PRIMARY KEY (ruling A4) — it is overwritten on every run rather than appended. It is the ONLY staleness signal this table has: compare it against op_wmt_inventory_v3__run.lastSnapshotAt and treat older rows as stale, not as zero
+	 * OURS, not from the payload: the snapshot time of the latest run that touched this row. NOT IN THE PRIMARY KEY — it is overwritten on every run rather than appended. It is the ONLY staleness signal this table has: a row whose time predates the most recent inventory run was not refreshed by that run, so treat it as stale, not as zero
 	 */
 	time: InstantColumn;
 	updatedAt: InstantColumn;
@@ -5923,7 +6472,7 @@ export interface DbTable_wmt_inventory_v3__Wfs {
  */
 export interface DbTable_wmt_orders_v3__Order {
 	/**
-	 * SovConnector.connectorId of the walmart_marketplace connector that fetched this order
+	 * The Databrill connector id of the Walmart connector that fetched this order
 	 */
 	connectorId: string;
 	createdAt: InstantColumn;
@@ -5959,7 +6508,7 @@ export interface DbTable_wmt_orders_v3__Order {
 export interface DbTable_wmt_orders_v3__OrderLine {
 	carrierName: string | null;
 	/**
-	 * SovConnector.connectorId of the walmart_marketplace connector that fetched this line
+	 * The Databrill connector id of the Walmart connector that fetched this line
 	 */
 	connectorId: string;
 	createdAt: InstantColumn;
@@ -6014,6 +6563,7 @@ export interface DB {
 	amazon_ads_target: DbView_amazon_ads_target;
 	amazon_browse_node: DbTable_amazon_browse_node;
 	amazon_browse_node_attribute: DbTable_amazon_browse_node_attribute;
+	amazon_browse_node_query: DbTable_amazon_browse_node_query;
 	amazon_country: DbTable_amazon_country;
 	amazon_fba_inventory_summary: DbView_amazon_fba_inventory_summary;
 	amazon_listing_all: DbView_amazon_listing_all;
@@ -6021,6 +6571,7 @@ export interface DB {
 	amazon_marketplace: DbTable_amazon_marketplace;
 	amazon_merchant: DbTable_amazon_merchant;
 	amazon_orders_by_day_and_sku: DbView_amazon_orders_by_day_and_sku;
+	amazon_product_type_keyword: DbTable_amazon_product_type_keyword;
 	amazon_sales_and_traffic: DbView_amazon_sales_and_traffic;
 	amazon_store: DbTable_amazon_store;
 	amzadapi_eligibility_v1__program: DbTable_amzadapi_eligibility_v1__program;
@@ -6032,10 +6583,12 @@ export interface DB {
 	amzadapi_reports_v1__search_asin_placement__byDay: DbTable_amzadapi_reports_v1__search_asin_placement__byDay;
 	amzagg_profit__orderItem: DbTable_amzagg_profit__orderItem;
 	amzagg_profit__orderItemProjectionState: DbTable_amzagg_profit__orderItemProjectionState;
+	amzfact_fnsku_fbaInventory: DbTable_amzfact_fnsku_fbaInventory;
 	amzfact_ledger_build: DbTable_amzfact_ledger_build;
 	amzfact_ledger_item: DbTable_amzfact_ledger_item;
 	amzfact_ledger_posting: DbTable_amzfact_ledger_posting;
 	amzfact_ledger_transaction: DbTable_amzfact_ledger_transaction;
+	amzfact_sku_identity: DbTable_amzfact_sku_identity;
 	amzms_v1__adgroups: DbTable_amzms_v1__adgroups;
 	amzms_v1__ads: DbTable_amzms_v1__ads;
 	amzms_v1__budget_usage: DbTable_amzms_v1__budget_usage;
@@ -6054,6 +6607,7 @@ export interface DB {
 	amzreport_COUPON_PERFORMANCE: DbTable_amzreport_COUPON_PERFORMANCE;
 	amzreport_FBA_CUSTOMER_RETURNS: DbTable_amzreport_FBA_CUSTOMER_RETURNS;
 	amzreport_FBA_FEE_PREVIEW: DbTable_amzreport_FBA_FEE_PREVIEW;
+	amzreport_FBA_INBOUND_NONCOMPLIANCE: DbTable_amzreport_FBA_INBOUND_NONCOMPLIANCE;
 	amzreport_FBA_INVENTORY_PLANNING: DbTable_amzreport_FBA_INVENTORY_PLANNING;
 	amzreport_FBA_REIMBURSEMENTS: DbTable_amzreport_FBA_REIMBURSEMENTS;
 	amzreport_FBA_REMOVAL_ORDER_DETAIL: DbTable_amzreport_FBA_REMOVAL_ORDER_DETAIL;
@@ -6070,11 +6624,22 @@ export interface DB {
 	amzreport_SEARCH_QUERY_PERFORMANCE: DbTable_amzreport_SEARCH_QUERY_PERFORMANCE;
 	amzreport_SETTLEMENT_V2: DbTable_amzreport_SETTLEMENT_V2;
 	amzreport_SETTLEMENT_V2__summary: DbTable_amzreport_SETTLEMENT_V2__summary;
+	amzspapi_awd_v2024__InboundOrder: DbTable_amzspapi_awd_v2024__InboundOrder;
+	amzspapi_awd_v2024__InboundShipment: DbTable_amzspapi_awd_v2024__InboundShipment;
+	amzspapi_awd_v2024__InboundShipmentSkuQuantity: DbTable_amzspapi_awd_v2024__InboundShipmentSkuQuantity;
+	amzspapi_awd_v2024__Inventory: DbTable_amzspapi_awd_v2024__Inventory;
+	amzspapi_awd_v2024__ReplenishmentOrder: DbTable_amzspapi_awd_v2024__ReplenishmentOrder;
+	amzspapi_awd_v2024__ReplenishmentOrderProduct: DbTable_amzspapi_awd_v2024__ReplenishmentOrderProduct;
+	amzspapi_awd_v2024__ReplenishmentOutboundShipment: DbTable_amzspapi_awd_v2024__ReplenishmentOutboundShipment;
 	amzspapi_catalog_items_v20220401__catalogitem: DbTable_amzspapi_catalog_items_v20220401__catalogitem;
 	amzspapi_catalog_items_v20220401__itemattributes: DbTable_amzspapi_catalog_items_v20220401__itemattributes;
 	amzspapi_catalog_items_v20220401__itemattributes_lang:
 		DbTable_amzspapi_catalog_items_v20220401__itemattributes_lang;
 	amzspapi_catalog_items_v20220401__itemimages: DbTable_amzspapi_catalog_items_v20220401__itemimages;
+	amzspapi_fbaInbound_v0__ShipmentItem: DbTable_amzspapi_fbaInbound_v0__ShipmentItem;
+	amzspapi_fbaInbound_v2024__InboundPlan: DbTable_amzspapi_fbaInbound_v2024__InboundPlan;
+	amzspapi_fbaInbound_v2024__Shipment: DbTable_amzspapi_fbaInbound_v2024__Shipment;
+	amzspapi_fbaInbound_v2024__ShipmentItem: DbTable_amzspapi_fbaInbound_v2024__ShipmentItem;
 	amzspapi_fbaInventory_v1__InventorySummary: DbTable_amzspapi_fbaInventory_v1__InventorySummary;
 	amzspapi_finances_v20240619__Transaction: DbTable_amzspapi_finances_v20240619__Transaction;
 	amzspapi_finances_v20240619__TransactionItemProjectionState:

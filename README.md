@@ -155,6 +155,10 @@ role on every database, which changes every workspace's password at once.
 Treat the URI as a long-lived secret and tell us promptly if it is
 exposed, so the rotation can be scheduled rather than emergency-run.
 
+The URI's `sslmode` parameter is read by `createDb()` and applied with
+libpq's meanings, which are not the ones `pg` gives it — see "TLS and
+`sslmode`" under "Connection options" before you rely on either.
+
 ## Runtime requirements
 
 Values come back as `Temporal` objects, so the runtime needs `Temporal`.
@@ -263,6 +267,90 @@ one that is not there, ask.
 `ca`, `cert`, `key`, `servername`. The three certificate fields are
 `string` where `pg` also accepts a `Buffer`, so a certificate you read
 from disk as bytes needs `.toString()` before you pass it.
+
+### TLS and `sslmode`
+
+`createDb()` reads `sslmode` out of your connection string and applies
+**libpq's** meanings to it, not `pg`'s. That difference is the whole
+reason this exists: since 8.16, `pg` treats `prefer`, `require` and
+`verify-ca` as aliases for `verify-full`, so a `sslmode=require` URL that
+connects fine with `psql` fails here with `self-signed certificate in
+certificate chain` against a pooler — Supabase's among them — whose chain
+does not verify against the public root store. Through `createDb()`,
+`require` means what libpq means: encrypted, not verified.
+
+| `sslmode` | What you get |
+| --- | --- |
+| `verify-full` | The chain and the hostname are both verified. |
+| `verify-ca` | An error: it needs a CA, and a CA can only arrive through `ssl` — see below. |
+| `require`, `prefer` | Encrypted, not verified. |
+| `allow` | The same: encrypted, not verified. |
+| `disable` | No TLS. |
+| anything else | An error naming the valid modes. |
+
+Modes are matched exactly, so `sslmode=Require` is an error rather than
+something quietly different from what you wrote.
+
+`verify-ca` **requires a CA and throws without one**. Verifying a chain
+against the public root store and skipping the hostname check accepts any
+publicly-trusted certificate for any hostname, which is not a check at
+all. Pass the certificate contents as `ssl: { ca }`. Note that an
+explicit `ssl` takes precedence over the string, so that combination
+hands `pg` your object as you wrote it — chain and hostname both, which
+is `verify-full`. If you need libpq's `verify-ca` exactly, with a CA and
+no hostname check, ask and we will add a way to say so.
+
+`prefer` and `allow` are approximations. In libpq they try one transport
+and fall back to the other; `pg` has no downgrade path, so both are
+implemented here as "always TLS, unverified". That is stronger than libpq
+for `allow`, and it can only fail where libpq would have connected in
+plaintext.
+
+**An explicit `ssl` option wins over the connection string.** A customer
+holding a vendor root CA writes
+
+```ts
+createDb({ connectionString: "postgres://…?sslmode=verify-full", ssl: { ca } });
+```
+
+and the `ca` survives. This was previously not true, and silently: `pg`
+merges the parsed connection string over the config you handed it, and
+the parse overwrites `ssl` whenever the string mentions TLS at all, so
+the `ca` above used to be discarded before the pool ever saw it.
+`createDb()` now removes the `sslmode` it has consumed from the string,
+which is what makes your option stick. The mode itself is then not
+consulted at all, so an unrecognised one does not raise the error the
+table above describes — your `ssl` decided it.
+
+**No `sslmode` in the string means this package sets nothing**, so `pg`'s
+own default and the `PGSSLMODE` environment variable both still apply,
+exactly as before. That is deliberate rather than an oversight — but a
+bare URL connects in plaintext, so write `sslmode=require` on any
+connection that crosses a network, and `sslmode=verify-full` with a `ca`
+where you can.
+
+`sslrootcert=` is **not** read from disk by this package, and neither are
+`sslcert=` and `sslkey=`. This package does no filesystem access of its
+own, so those three are left in the string for `pg` to handle; pass the
+certificate contents as `ssl: { ca }` instead.
+
+Be aware of what "left for `pg` to handle" means, because it is not
+"ignored". `pg` reads those three files itself, synchronously, while it
+parses the connection string inside `new Pool()` — so `createDb()` throws
+`ENOENT` right there if the path is wrong, rather than failing later on
+connect, and under Deno the read needs `--allow-read` from you even
+though the code doing it is not ours.
+
+One consequence is worth knowing, and it is the sharp edge of this
+section. Because those three are left in the string, a URL carrying any
+of them still reaches the driver's own "the string mentions TLS" branch,
+which builds an `ssl` object of its own and merges it **over** everything
+else. So on a URL that combines `sslmode=` with `sslcert=`, `sslkey=` or
+`sslrootcert=`, neither guarantee above holds: the table's mapping is
+discarded and you get `pg`'s TLS behaviour, and an explicit `ssl` option
+is discarded too. The same is true of `ssl=true`, `ssl=1` and
+`sslnegotiation=direct` in the URL. Keep all of those out of the
+connection string and pass certificate contents through `ssl` instead.
 
 ## The `schema` option
 

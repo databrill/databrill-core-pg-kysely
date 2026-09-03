@@ -131,6 +131,59 @@ Deno.test("createDb - ordinary schema names are accepted and qualify the SQL", a
 	}
 });
 
+Deno.test("createDb - a sslmode in the connection string reaches the pool as a stripped string and a resolved ssl", async () => {
+	// The wiring assertion. `sslmode.test.ts` proves `resolveSslMode` computes the
+	// right answer; only this proves `createDb()` puts that answer into the pool
+	// config instead of forwarding the caller's original string — which `pg` would
+	// then re-parse, overwriting the resolved `ssl` with its own reading.
+	const tenant = createDb({ connectionString: "postgres://u:p@127.0.0.1:1/db?application_name=x&sslmode=require" });
+	// Narrowed for the same reason as the tests above: `options` is an internal
+	// `pg` field the published `TenantPool` deliberately does not declare.
+	assert(tenant.pool instanceof Pool, "the exposed pool really is a pg.Pool");
+	try {
+		assertEquals(tenant.pool.options.connectionString, "postgres://u:p@127.0.0.1:1/db?application_name=x");
+		assertEquals(tenant.pool.options.ssl, { rejectUnauthorized: false });
+	} finally {
+		await tenant.destroy();
+	}
+});
+
+Deno.test("createDb - a connection string with no sslmode leaves no ssl key on the pool config at all", async () => {
+	// The absence of the KEY is the assertion, not `ssl === undefined`: `pg` falls
+	// back to `PGSSLMODE` only while `config.ssl` is undefined, and `createDb()`
+	// spreads the `ssl` key conditionally precisely so that no key is invented for
+	// a caller who never mentioned TLS. Nothing in `sslmode.test.ts` can observe
+	// this — `resolveSslMode` returning `ssl: undefined` does not prove the key was
+	// omitted downstream.
+	const tenant = createDb(UNUSED_URL);
+	assert(tenant.pool instanceof Pool, "the exposed pool really is a pg.Pool");
+	try {
+		assert(!("ssl" in tenant.pool.options), "no ssl key may be invented, or PGSSLMODE stops working");
+		assertEquals(tenant.pool.options.connectionString, UNUSED_URL);
+	} finally {
+		await tenant.destroy();
+	}
+});
+
+Deno.test("createDb - an explicit ssl option reaches the pool intact and the string cannot override it", async () => {
+	// The other half of the wiring, and the live bug this change fixes: `pg` merges
+	// the parsed connection string OVER the config it was handed, so a caller's CA
+	// used to be discarded by whatever `sslmode=` the string carried.
+	// `sslmode.test.ts` proves `resolveSslMode` hands the caller's object straight
+	// back; only this proves `createDb()` passes the caller's `ssl` INTO it rather
+	// than `undefined`. That one-word slip reinstates the bug outright, and every
+	// other test in both files stays green through it.
+	const callerSsl = { ca: "PEM" };
+	const tenant = createDb({ connectionString: `${UNUSED_URL}?sslmode=require`, ssl: callerSsl });
+	assert(tenant.pool instanceof Pool, "the exposed pool really is a pg.Pool");
+	try {
+		assertEquals(tenant.pool.options.ssl, callerSsl, "the caller's ssl must survive a sslmode in the string");
+		assertEquals(tenant.pool.options.connectionString, UNUSED_URL);
+	} finally {
+		await tenant.destroy();
+	}
+});
+
 Deno.test("createDb - a connection string and an options object behave the same", async () => {
 	const fromString = createDb(UNUSED_URL);
 	const fromOptions = createDb({ connectionString: UNUSED_URL });

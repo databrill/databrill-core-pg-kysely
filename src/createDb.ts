@@ -4,6 +4,7 @@ import type { ReadonlyKysely } from "kysely/readonly";
 import { Pool } from "pg";
 import type { DB } from "./db.ts";
 import { makePgTypes } from "./pgTypeParsers.ts";
+import { resolveSslMode } from "./sslmode.ts";
 import { temporalParameterPlugin } from "./temporalParameterPlugin.ts";
 import { requireTemporal } from "./temporalValues.ts";
 import type { WritableDB } from "./WritableDB.ts";
@@ -199,6 +200,11 @@ export interface TenantDb {
  * `PostgresDialect`, which never names prepared statements and is therefore
  * safe against a transaction-mode pooler with no extra configuration.
  *
+ * A `sslmode` in the connection string is read here and applied with libpq's
+ * meanings rather than `pg`'s — `require` means encrypted, not verified — and
+ * an explicit `ssl` option wins over the string. See the README's "TLS and
+ * `sslmode`" section.
+ *
  * Requires `Temporal`, from the runtime itself or from
  * `temporal-polyfill/global`. This throws immediately if it is missing.
  */
@@ -212,7 +218,26 @@ export function createDb(options: string | CreateDbOptions): TenantDb {
 		);
 	}
 
-	const pool = new Pool({ ...poolConfig, types: makePgTypes() });
+	// `sslmode` is read off the connection string here and applied with libpq's
+	// meanings rather than `pg`'s; see `resolveSslMode`. The REWRITTEN string is
+	// what reaches the driver, because `pg` merges the parsed connection string
+	// over the config it was handed — leaving `sslmode=` in place would let the
+	// string overwrite both what this resolved and an `ssl` the caller passed.
+	//
+	// Both keys are spread conditionally, so a connection string this does not
+	// touch — and an absent `sslmode` — leave the pool config exactly as the
+	// caller wrote it, with no `ssl` key invented. `pg@8.23.0` would not notice
+	// the difference on its own: `connection-parameters.js:85` falls back to
+	// `PGSSLMODE` whenever `typeof config.ssl === "undefined"`, so a
+	// present-and-`undefined` key behaves like an absent one there. Not writing
+	// the key is what keeps that true regardless of how the check is spelled.
+	const tls = typeof poolConfig.connectionString === "string"
+		? resolveSslMode(poolConfig.connectionString, poolConfig.ssl)
+		: undefined;
+	const connectionStringOption = tls === undefined ? {} : { connectionString: tls.connectionString };
+	const sslOption = tls === undefined || tls.ssl === undefined ? {} : { ssl: tls.ssl };
+
+	const pool = new Pool({ ...poolConfig, ...connectionStringOption, ...sslOption, types: makePgTypes() });
 
 	// `pg-pool` emits `'error'` on the POOL when an idle client fails — a
 	// database restart, a pooler recycling a backend, someone running
