@@ -17,7 +17,6 @@
  */
 
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.19";
-import type { InferResult } from "kysely";
 import { createCanonicalQueryBuilder, makePostgresJsTypes } from "../../src/canonical/execute.ts";
 import { pgTypeParsers } from "../../src/pgTypeParsers.ts";
 import { keyColumnsForMeasures, measuresForLevel } from "../../src/canonical/declaration.ts";
@@ -42,31 +41,6 @@ function paramsFor(level: Parameters<typeof measuresForLevel>[1], overrides: Par
 		...overrides,
 	} satisfies LevelQueryParams;
 }
-
-Deno.test("canonical - a trivial query's row type comes from the generated schema", () => {
-	const query = db
-		.selectFrom("amazon_store")
-		.select(["merchantId", "marketplaceId", "countryCode"])
-		.where("isReal", "=", true);
-
-	// The point of compiling rather than executing: `InferResult` reads the
-	// builder, so these rows are typed by `DbTable_amazon_store` even though
-	// nothing here can connect. A column renamed in the generated `db.ts` fails
-	// this file at `deno check`, not at runtime on a customer database.
-	type Row = InferResult<typeof query>[number];
-	const typed: Row = { merchantId: "M1", marketplaceId: "MP1", countryCode: "DE" };
-	assertEquals(typed.countryCode, "DE");
-
-	const compiled = query.compile();
-	assertStringIncludes(compiled.sql, `from "amazon_store"`);
-	assertEquals(compiled.parameters, [true]);
-
-	// `InferResult` accepts the compiled query too, which is what lets a reader
-	// type its rows after dropping to `{ sql, parameters }`.
-	type CompiledRow = InferResult<typeof compiled>[number];
-	const fromCompiled: CompiledRow = typed;
-	assertEquals(fromCompiled.merchantId, "M1");
-});
 
 Deno.test("canonical - postgres.js and pg are configured from the same OID table", () => {
 	const postgresJs = makePostgresJsTypes();

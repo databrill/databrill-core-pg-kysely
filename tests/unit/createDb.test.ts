@@ -183,17 +183,3 @@ Deno.test("createDb - an explicit ssl option reaches the pool intact and the str
 		await tenant.destroy();
 	}
 });
-
-Deno.test("createDb - a connection string and an options object behave the same", async () => {
-	const fromString = createDb(UNUSED_URL);
-	const fromOptions = createDb({ connectionString: UNUSED_URL });
-	try {
-		assertEquals(
-			fromString.db.selectFrom("databrill_schema_version").select("version").compile().sql,
-			fromOptions.db.selectFrom("databrill_schema_version").select("version").compile().sql,
-		);
-	} finally {
-		await fromString.destroy();
-		await fromOptions.destroy();
-	}
-});

@@ -1,6 +1,6 @@
 {
 	"name": "@databrill/core-pg-kysely",
-	"version": "0.1.7",
+	"version": "0.1.8",
 	"description": "Typed access to a Databrill tenant database: the tenant schema as a versioned Kysely DB interface, plus a connection factory whose driver configuration makes those types true at runtime.",
 	"license": "Apache-2.0",
 	"tasks": {
@@ -27,6 +27,7 @@
 	},
 	"publish": {
 		"exclude": [
+			"**/dev--*",
 			".gitignore",
 			"deno.lock",
 			"tests/"

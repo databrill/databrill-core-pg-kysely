@@ -7,8 +7,8 @@
  * over the schema, or building your own Kysely instance.
  *
  * For the contract as runtime values — `SCHEMA_VERSION`, `SCHEMA_HASH`,
- * `WRITABLE_TABLE_NAMES` — import `@databrill/core-pg-kysely/contract`, which
- * is also free of `pg`. For a connection, import the package root, which is
+ * `WRITABLE_TABLE_NAMES`, `TABLE_NAMES` and `VIEW_NAMES` — import
+ * `@databrill/core-pg-kysely/contract`, which is also free of `pg`. For a connection, import the package root, which is
  * where {@link createDb} and its driver dependencies live.
  *
  * @module

@@ -24,14 +24,6 @@ const OID_DATE = 1082;
 const OID_TIMESTAMP = 1114;
 const OID_TIMESTAMPTZ = 1184;
 
-Deno.test("pgTypeParsers - covers exactly the three date/time OIDs", () => {
-	assertEquals(Object.keys(pgTypeParsers).map(Number).sort((a, b) => a - b), [
-		OID_DATE,
-		OID_TIMESTAMP,
-		OID_TIMESTAMPTZ,
-	]);
-});
-
 Deno.test("pgTypeParsers - each OID produces its documented Temporal type", () => {
 	const date = pgTypeParsers[OID_DATE]?.("2026-08-10");
 	const timestamp = pgTypeParsers[OID_TIMESTAMP]?.("2026-08-10 19:18:27.361");

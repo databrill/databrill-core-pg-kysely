@@ -28,9 +28,9 @@ import { col, qualified, rel } from "./names.ts";
  *   so a row count says nothing and the signal has to be the metric itself.
  *
  * `maxDefinitiveDate` is the name the agency codebase already uses for this
- * (`r2601-query.ts`, and a `ReportStatus` table in wsid 100000011 whose measured
- * values agree with the rule below), so this reader adopts that vocabulary
- * rather than inventing a second one.
+ * (`r2601-query.ts`, and a `ReportStatus` table whose values agree with the rule
+ * below), so this reader adopts that vocabulary rather than inventing a second
+ * one.
  */
 
 /** The completeness rule's constants, together so they can be argued about in one place. */

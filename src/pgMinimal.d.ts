@@ -33,11 +33,12 @@
  *
  * ## The two shapes this has to satisfy, and the check that proves it
  *
- * {@link Pool} is asserted structurally assignable to both Kysely's
+ * {@link Pool} has to be structurally assignable to both Kysely's
  * `PostgresPool` and this package's own `TenantPool` — the two places a real
- * `pg.Pool` is used as something else. `tests/unit/pgMinimal.test.ts` pins both
- * with `satisfies`, so a member that drifts out of shape fails
- * `deno task check` rather than at a customer's first query.
+ * `pg.Pool` is used as something else. `src/createDb.ts` does both, handing the
+ * pool to `new PostgresDialect({ pool })` and returning it as `TenantDb.pool`,
+ * so a member that drifts out of shape fails `deno task check` there rather
+ * than at a customer's first query. No test restates that check.
  *
  * What no type check can prove is the other direction: that these declarations
  * still match the RUNTIME `pg`. `tests/integration/createDbRoundTrip.test.ts`

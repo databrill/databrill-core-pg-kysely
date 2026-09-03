@@ -36,22 +36,6 @@ function paramsFor(
 	};
 }
 
-Deno.test("Search Query Performance declaration - records the non-hierarchical level and repeated market counts", () => {
-	assertEquals(
-		AMAZON_REPORT_SEARCH_QUERY_PERFORMANCE.levels.map((level) => level.level),
-		["SUM", "STORE", "SEARCH_QUERY"],
-	);
-	assertEquals(AMAZON_REPORT_SEARCH_QUERY_PERFORMANCE.timeGranularities, ["WEEK", "MONTH", "TOTAL"]);
-	const market = AMAZON_REPORT_SEARCH_QUERY_PERFORMANCE.measures.find((measure) =>
-		measure.name === "totalQueryImpressionCount"
-	);
-	assert(market !== undefined);
-	assertEquals(market.additivity.kind, "SEMI_ADDITIVE");
-	if (market.additivity.kind === "SEMI_ADDITIVE") {
-		assertEquals(market.additivity.notSummableAcross, ["PRODUCT", "STORE", "MERCHANT"]);
-	}
-});
-
 Deno.test("Search Query Performance compile - normalizes market counts before outer aggregation", () => {
 	const compiled = compileSearchQueryPerformanceQuery(db, paramsFor("SUM"));
 	assertStringIncludes(

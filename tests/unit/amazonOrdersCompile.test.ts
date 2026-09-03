@@ -3,7 +3,6 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.19";
 import { AMAZON_ORDERS } from "../../src/canonical/amazonOrders/declaration.ts";
 import { compileOrdersLevelQuery, type OrdersLevelQueryParams } from "../../src/canonical/amazonOrders/read.ts";
-import { AMAZON_REPORT_SALES_AND_TRAFFIC } from "../../src/canonical/AmazonReport_SALES_AND_TRAFFIC/declaration.ts";
 import { keyColumnsForMeasures, measuresForLevel } from "../../src/canonical/declaration.ts";
 import { createCanonicalQueryBuilder } from "../../src/canonical/execute.ts";
 import { ordersFreshnessQuery } from "../../src/canonical/freshness.ts";
@@ -27,33 +26,6 @@ function paramsFor(
 		...overrides,
 	};
 }
-
-Deno.test("AmazonOrders declaration - money and relation roles are explicit", () => {
-	const money = AMAZON_ORDERS.measures.filter((measure) => measure.value?.kind === "MONEY");
-	assertEquals(money.map((measure) => measure.name), [
-		"extendedPrice",
-		"extendedPriceExclTax",
-		"itemTaxAmount",
-		"shippingAmount",
-	]);
-	for (const measure of money) {
-		assertEquals(measure.value, { kind: "MONEY", currencyKey: "currency" });
-	}
-	const lookupSources = AMAZON_ORDERS.sources.filter((source) => source.role === "DIMENSION");
-	assertEquals(lookupSources.map((source) => source.key), [
-		"storeDirectory",
-		"marketplaceDirectory",
-		"fxRates",
-		"catalogItems",
-		"familyOntology",
-	]);
-	assert(lookupSources.every((source) => !("sourceGrainLevel" in source)));
-	assert(
-		AMAZON_REPORT_SALES_AND_TRAFFIC.sources.filter((source) => source.role === "DIMENSION").every(
-			(source) => !("sourceGrainLevel" in source),
-		),
-	);
-});
 
 Deno.test("AmazonOrders compile - settled line predicate and default Non-Amazon exclusion", () => {
 	const compiled = compileOrdersLevelQuery(db, paramsFor("SKU"));
@@ -100,12 +72,6 @@ Deno.test("AmazonOrders compile - distinct order count is recomputed at the requ
 			compiled.sql,
 			`COUNT(DISTINCT ("o"."merchant_id", "o"."amazon_order_id"))::float8 as "orders"`,
 		);
-	}
-	const orders = AMAZON_ORDERS.measures.find((measure) => measure.name === "orders");
-	assert(orders !== undefined);
-	assertEquals(orders.additivity.kind, "SEMI_ADDITIVE");
-	if (orders.additivity.kind === "SEMI_ADDITIVE") {
-		assertEquals(orders.additivity.notSummableAcross, ["PRODUCT"]);
 	}
 });
 

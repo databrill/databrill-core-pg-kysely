@@ -26,8 +26,20 @@ releases are below `1.0.0` — it reports "has only pre-release versions
 available" and does nothing.
 
 If you install within a day of a release, Deno's minimum-dependency-age policy
-(24 hours by default) will refuse the new version as well. Either wait, or pass
-`--min-dep-age=0` for that one install.
+(24 hours by default) will refuse the new version as well. Either wait, pass
+`--min-dep-age=0` for that one install, or exempt this package for good in your
+own `deno.json`:
+
+```json
+"minimumDependencyAge": { "age": "P1D", "exclude": ["jsr:@databrill/core-pg-kysely"] }
+```
+
+The exclude entry has to match the specifier you actually import with, and
+nothing warns you when it does not — the wrong form is silently inert and the
+install stays blocked. `jsr:@databrill/core-pg-kysely` is the one for a Deno
+consumer who installed with the command above. Through JSR's npm compatibility
+layer the specifier is a different string and so is the entry:
+`npm:@jsr/databrill__core-pg-kysely`.
 
 Node consumers can install through JSR's npm compatibility layer. Add an
 `.npmrc` with `@jsr:registry=https://npm.jsr.io` and install
@@ -70,17 +82,26 @@ Which one you import decides what you pay for:
   dependency at all. Use it for typing rows, writing helpers over the schema,
   or building your own Kysely instance.
 - `@databrill/core-pg-kysely/contract` — the contract as runtime values:
-  `SCHEMA_VERSION`, `SCHEMA_HASH` and `WRITABLE_TABLE_NAMES`. Also free of
-  `pg`, so checking which schema version you were built against does not cost
-  a database driver.
+  `SCHEMA_VERSION`, `SCHEMA_HASH`, `WRITABLE_TABLE_NAMES`, `TABLE_NAMES`
+  and `VIEW_NAMES`. Also free of `pg`, so checking which schema version you
+  were built against does not cost a database driver.
 
 ```ts
-import { SCHEMA_VERSION, WRITABLE_TABLE_NAMES } from "@databrill/core-pg-kysely/contract";
+import { SCHEMA_VERSION, TABLE_NAMES, VIEW_NAMES } from "@databrill/core-pg-kysely/contract";
 ```
 
-All three are re-exported from the package root, so importing everything from
-`@databrill/core-pg-kysely` is always correct — the split exists only so you
-can avoid the driver when you do not need it.
+`TABLE_NAMES` and `VIEW_NAMES` are the published tables and the published
+views, each sorted, as plain string arrays; together they are exactly the
+names `db.selectFrom()` accepts. Two lists rather than one because the
+difference is part of the contract — views are the surface to prefer, as
+"Stability and versioning" explains — and `[...TABLE_NAMES, ...VIEW_NAMES]`
+is the flat list whenever you want it. What they are for is checking which
+of those relations your own workspace has; see "Read and write" below.
+
+Everything the two narrow entry points export is re-exported from the package
+root as well, so importing everything from `@databrill/core-pg-kysely` is always
+correct — the split exists only so you can avoid the driver when you do not
+need it.
 
 ## Type names
 
@@ -124,6 +145,32 @@ boundary is the grants held by the database role in your connection
 string. A compile error from `db` is a hint that you meant `write`, never
 proof that a write could not happen — do not treat the types as a
 security control.
+
+The same limit applies to which relations exist. `DB` names every
+relation Databrill can provision, and any one workspace holds a subset of
+them, so `db.selectFrom("amazon_listing_open")` type-checks whether or
+not your schema has that view and then fails at runtime with `relation
+does not exist`. A name type-checking is not evidence the relation is
+there. `TABLE_NAMES` and `VIEW_NAMES` from
+`@databrill/core-pg-kysely/contract` are the full published list, and one
+query says which of them you actually have (`pool` is the third thing
+`createDb()` returns; see "The pool" below):
+
+```ts
+import { TABLE_NAMES, VIEW_NAMES } from "@databrill/core-pg-kysely/contract";
+
+const { rows } = await pool.query(
+	"select table_name from information_schema.tables where table_schema = $1",
+	["w123456789"],
+);
+const present = new Set(rows.map((row) => String(row.table_name)));
+const missing = [...TABLE_NAMES, ...VIEW_NAMES].filter((name) => !present.has(name));
+```
+
+`information_schema.tables` lists views alongside tables (a view has
+`table_type = 'VIEW'`), so that one query covers both lists. It also
+shows only relations your role holds some privilege on, which is the
+right answer here: one you cannot read is one you cannot query.
 
 ## Your connection string
 
@@ -231,6 +278,19 @@ Raw `pg`, without either of these, returns `Date` objects for
 serializer JSON-stringifies a Temporal value into a quoted string that
 Postgres rejects. Both problems are silent until they are not — the query
 type-checks and then hands back the wrong runtime shape.
+
+This section is about a pool you opened yourself. The one `createDb()`
+returns cannot stand in for it: `pool` is typed as `TenantPool`, narrowed
+on purpose so that nothing you import from here obliges you to install
+`@types/pg`, and passing it to `PostgresDialect` does not compile:
+
+```
+Type 'TenantPool' is not assignable to type 'PostgresPool | ((options?) => Promise<PostgresPool>)'
+```
+
+If what you wanted was raw SQL against the pool this package already
+opened, that is `pool.query(text, values)` rather than a second Kysely
+instance; see "The pool" below.
 
 ## Connection options
 
@@ -474,6 +534,13 @@ visible in the version you install. Only the patch slot floats. When you
 need to know exactly which contract a build carries, read
 `SCHEMA_VERSION` rather than the package version — and
 `checkSchemaCompatibility()` already does.
+
+One consequence for the range you pin: because the minor slot belongs to
+the schema, a change that breaks the library without changing the schema
+lands in the patch slot as well. No range excludes that: every range you
+would write admits patch releases, and while the package is `0.x` a tilde
+range and a caret range are the same range. A consumer who cannot absorb
+such a change has to pin an exact version and move it deliberately.
 
 ## No migrations
 

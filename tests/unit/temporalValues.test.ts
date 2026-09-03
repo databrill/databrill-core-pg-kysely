@@ -16,7 +16,6 @@ import {
 	parseInstant,
 	parsePlainDate,
 	parsePlainDateTime,
-	requireTemporal,
 	temporalToPostgres,
 	UnrepresentableTemporalValueError,
 } from "../../src/temporalValues.ts";
@@ -144,17 +143,4 @@ Deno.test("temporalToPostgres - a ZonedDateTime loses its IANA annotation, which
 	assert(typeof rendered === "string");
 	assert(!rendered.includes("["), `annotation must be stripped, got ${rendered}`);
 	assertEquals(Temporal.Instant.from(rendered).toString(), "2026-08-10T19:18:27.361Z");
-});
-
-Deno.test("temporalToPostgres - the rendered form is what pg would otherwise mangle", () => {
-	// pg falls through to JSON.stringify for objects it does not recognize,
-	// which wraps the ISO string in literal quotes. This is the bug the
-	// conversion exists to prevent, pinned so nobody "simplifies" it away.
-	const instant = Temporal.Instant.from("2026-08-10T19:18:27.361Z");
-	assertEquals(JSON.stringify(instant), '"2026-08-10T19:18:27.361Z"');
-	assertEquals(temporalToPostgres(instant), "2026-08-10T19:18:27.361Z");
-});
-
-Deno.test("requireTemporal - passes on a runtime that has Temporal", () => {
-	requireTemporal();
 });

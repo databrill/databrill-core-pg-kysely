@@ -62,4 +62,8 @@ export type * from "./db.ts";
 export type { InstantColumn, PlainDateColumn, PlainDateTimeColumn } from "./temporalColumns.ts";
 export type { WritableDB, WritableTableName } from "./WritableDB.ts";
 export { WRITABLE_TABLE_NAMES } from "./WRITABLE_TABLE_NAMES.ts";
+// `DB` names every relation Databrill can provision; a given workspace holds a
+// subset of them. These two lists are what a customer diffs against their own
+// schema to find out which of those names their database actually has.
+export { TABLE_NAMES, VIEW_NAMES } from "./relationNames.ts";
 export { SCHEMA_HASH, SCHEMA_VERSION } from "./schemaVersion.ts";

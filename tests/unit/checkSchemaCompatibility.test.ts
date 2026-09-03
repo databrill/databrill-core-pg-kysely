@@ -111,8 +111,9 @@ Deno.test("compareSchemaVersions - every result carries a non-empty message", ()
 });
 
 Deno.test("SCHEMA_VERSION - the generated constant is a three-part version", () => {
-	// The generator refuses to run unless this equals the package manifest's
-	// version, so a malformed value here means the generated file was edited.
+	// The generator writes this from `TENANT_SCHEMA_VERSION` and refuses to run
+	// unless that agrees with the package manifest in its leading two components,
+	// so a malformed value here means the generated file was hand-edited.
 	assert(/^\d+\.\d+\.\d+/.test(SCHEMA_VERSION), `SCHEMA_VERSION is not a version: ${SCHEMA_VERSION}`);
 	assertEquals(compareSchemaVersions(SCHEMA_VERSION, SCHEMA_VERSION).level, "ok");
 });
