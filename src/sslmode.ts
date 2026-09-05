@@ -77,7 +77,7 @@ const CONSUMED_PARAMETERS: readonly string[] = ["sslmode", "uselibpqcompat"];
  * and fall back to the other — are "always TLS, unverified" here.
  *
  * Compared case-sensitively, matching `pg-connection-string`'s own switch:
- * `sslmode=Require` throws rather than quietly meaning something.
+ * `sslmode=Require` throws rather than silently meaning something.
  *
  * @param mode the raw value read from the connection string
  * @param ca the CA the caller supplied, if any; `verify-ca` refuses without one

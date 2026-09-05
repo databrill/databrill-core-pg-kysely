@@ -99,7 +99,7 @@ export declare class Pool {
  * Only `getTypeParser` is declared: `setTypeParser` is process-global, and this
  * package overrides parsing per pool precisely so it never touches it. Leaving it
  * undeclared means a future edit that reaches for it fails the type check instead
- * of quietly rewriting parsing for every pool in the customer's process.
+ * of silently rewriting parsing for every pool in the customer's process.
  */
 export declare const types: {
 	getTypeParser(oid: number, format?: "text" | "binary"): unknown;

@@ -6,7 +6,7 @@
  * the exact membership is pinned by the drift check in `tests/integration/` and
  * by the Docker-less companion in `services/tests/unit/`. What is worth pinning
  * here — in the package that publishes the file — is what neither of those can
- * see. The drift gate compares the generator's output with itself, so a
+ * see. The drift check compares the generator's output with itself, so a
  * generator that emits an empty, duplicated or unsorted list passes it; and the
  * two lists together being exactly `keyof DB` is a type-level claim about the
  * published surface. (That a writable table is a published table follows from

@@ -72,7 +72,7 @@ Deno.test("tlsConfigForSslMode - verify-ca without a CA refuses rather than trus
 
 Deno.test("sslmode - an unrecognised, miscased or empty mode throws and the message names the valid modes", () => {
 	// The naming is the assertion, not merely that it threw: the failure this
-	// pins is a typo'd mode quietly meaning something. Case sensitivity is
+	// pins is a typo'd mode silently meaning something. Case sensitivity is
 	// deliberate and matches `pg-connection-string`'s own switch, so `Require` is
 	// a typo rather than a synonym.
 	for (const mode of ["insecure", "Require"]) {
@@ -115,7 +115,7 @@ Deno.test("resolveSslMode - a query that held nothing but sslmode leaves no trai
 Deno.test("resolveSslMode - an explicit ssl wins over the string and comes back untouched", () => {
 	// The stripping is what makes the precedence real: without it `pg` re-applies
 	// its own reading of the string over the caller's `ssl`, and the CA is
-	// silently discarded. That is the live bug this change fixes, so both halves
+	// silently discarded. That is the unfixed bug this change fixes, so both halves
 	// are asserted — the caller's object AND the stripped string.
 	const callerSsl = { ca: "PEM" };
 	const resolved = resolveSslMode("postgres://h/db?sslmode=verify-full", callerSsl);

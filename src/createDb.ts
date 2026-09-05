@@ -244,7 +244,7 @@ export function createDb(options: string | CreateDbOptions): TenantDb {
 	// `pg_terminate_backend`. `EventEmitter` throws on an unhandled `'error'`,
 	// so with no listener that becomes an uncaught exception that kills the
 	// customer's process, thrown from inside a library they cannot reach. This
-	// package constructs the pool, so it owes the pool a listener.
+	// package constructs the pool, so it must attach a listener to the pool.
 	//
 	// Swallowing is correct here and elsewhere would not be: an idle-client
 	// failure has no caller to reject — the pool discards the client and the
@@ -262,7 +262,7 @@ export function createDb(options: string | CreateDbOptions): TenantDb {
 	// for handing out a read-only view: `ReadonlyKysely` narrows `Kysely`'s
 	// method signatures to error types, so the two are not mutually assignable
 	// and no widening or generic trick bridges them. This is the single
-	// assertion in the package, and it is load-bearing — the alternative is
+	// assertion in the package, and it is needed — the alternative is
 	// publishing a mutable handle.
 	const readable: ReadonlyKysely<DB> = readBase as never;
 

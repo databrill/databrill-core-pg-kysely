@@ -37,9 +37,9 @@ export const pgTypeParsers: Readonly<
  * (`TypeId`) from `pg-types` — a runtime package, floated at `^2.2.0` by
  * `@types/pg` while `pg` itself pins exactly `2.2.0` — through this package's
  * type surface. And `deno doc` emits a `typeof` query as a `typeQuery` node
- * carrying no `resolution` at all, so a leak gate that matches on import
- * resolutions cannot see it: the naive gate would have called the package clean
- * while this line was leaking. Hence the second rule in the gate, and hence this
+ * carrying no `resolution` at all, so a leak check that matches on import
+ * resolutions cannot see it: the naive check would have called the package clean
+ * while this line was leaking. Hence the second rule in the check, and hence this
  * declaration.
  *
  * `oid: number` rather than `pg-types`' `TypeId`: it is what the parser table is

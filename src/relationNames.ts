@@ -6,7 +6,7 @@
 // services/libs/database/src/initTablesRemote.ts. Regenerate from services/ with:
 //   deno run -A --env-file=.env.dev-ports.local scripts/generate-kysely-tenant-types.ts
 //
-// A drift gate in pg-kysely-tenant/tests/integration/ fails if this file is stale.
+// A drift check in pg-kysely-tenant/tests/integration/ fails if this file is stale.
 
 /**
  * Every tenant table this package publishes, sorted.

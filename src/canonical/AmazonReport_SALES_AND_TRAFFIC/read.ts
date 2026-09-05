@@ -27,7 +27,7 @@ import { AMAZON_REPORT_SALES_AND_TRAFFIC } from "./declaration.ts";
  * The `AmazonReport_SALES_AND_TRAFFIC` reader: one declaration, eight group-by levels, two
  * source relations, and the rules that keep the two apart.
  *
- * Three things here are the whole point of the slice and are easy to
+ * Three things here are the whole point of this reader and are easy to
  * accidentally undo:
  *
  * 1. EVERY LEVEL AGGREGATES FROM THE SOURCE GRAIN. There is no roll-up chain.

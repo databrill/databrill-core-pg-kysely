@@ -6,7 +6,7 @@
 // services/libs/database/src/initTablesRemote.ts. Regenerate from services/ with:
 //   deno run -A --env-file=.env.dev-ports.local scripts/generate-kysely-tenant-types.ts
 //
-// A drift gate in pg-kysely-tenant/tests/integration/ fails if this file is stale.
+// A drift check in pg-kysely-tenant/tests/integration/ fails if this file is stale.
 
 /**
  * The tenant schema contract version this package publishes.
@@ -26,4 +26,4 @@ export const SCHEMA_VERSION: string = "0.1.5";
  * surface a build carries. Informational: compatibility is decided on
  * `SCHEMA_VERSION`, because a database cannot know this hash.
  */
-export const SCHEMA_HASH: string = "897fe329b39be5c86231fd5e4bd43a4670495ca0363fa560e77cef483b237c10";
+export const SCHEMA_HASH: string = "bf660be7110c41b5ebf3186de385ab9ed6fe57c03380df9e18f14b017cd85b79";

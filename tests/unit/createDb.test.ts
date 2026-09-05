@@ -166,7 +166,7 @@ Deno.test("createDb - a connection string with no sslmode leaves no ssl key on t
 });
 
 Deno.test("createDb - an explicit ssl option reaches the pool intact and the string cannot override it", async () => {
-	// The other half of the wiring, and the live bug this change fixes: `pg` merges
+	// The other half of the wiring, and the unfixed bug this change fixes: `pg` merges
 	// the parsed connection string OVER the config it was handed, so a caller's CA
 	// used to be discarded by whatever `sslmode=` the string carried.
 	// `sslmode.test.ts` proves `resolveSslMode` hands the caller's object straight

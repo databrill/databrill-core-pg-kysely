@@ -6,12 +6,12 @@
 // services/libs/database/src/initTablesRemote.ts. Regenerate from services/ with:
 //   deno run -A --env-file=.env.dev-ports.local scripts/generate-kysely-tenant-types.ts
 //
-// A drift gate in pg-kysely-tenant/tests/integration/ fails if this file is stale.
+// A drift check in pg-kysely-tenant/tests/integration/ fails if this file is stale.
 
 /**
  * Every tenant table a customer role is intended to be able to write.
  *
- * The `as const` is load-bearing across a file boundary: `WritableDB.ts`
+ * The `as const` is required across a file boundary: `WritableDB.ts`
  * derives `WritableTableName` as `typeof WRITABLE_TABLE_NAMES[number]`, and
  * without it that widens to `string` and `WritableDB` silently becomes
  * `Pick<DB, string>` — every table writable, with no error anywhere.

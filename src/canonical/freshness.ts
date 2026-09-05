@@ -9,12 +9,11 @@ import { col, qualified, rel } from "./names.ts";
  *
  * The sales-and-traffic report's traffic metrics fill three to four days after
  * the report date, and the day-after run lands sales rows with page views of
- * zero. Measured on 2026-08-17: the table's global `MAX(date)` was 2026-08-16,
- * and that date held 14 rows, 19 units and 0 sessions across the whole account,
- * against roughly 1,000 rows and 40,000 sessions on a normal day. Six of seven
- * marketplaces genuinely stopped at 2026-08-14. A reader that treats "a row
- * exists" as "the day is present" reports near-zero traffic for the most recent
- * days and no consumer can tell.
+ * zero. The newest date present in the table is therefore routinely a
+ * placeholder day, whose row count and session count collapse to a small
+ * fraction of a normal day's, while most marketplaces genuinely stopped one or
+ * two days earlier. A reader that treats "a row exists" as "the day is present"
+ * reports near-zero traffic for the most recent days and no consumer can tell.
  *
  * So the rule is a COMPLETENESS test, not a fixed lag: the latest date whose
  * signal reaches a fraction of the store's recent typical signal. A fixed lag
@@ -51,7 +50,7 @@ export const FRESHNESS_RULE = {
 	 * A scan bound, NOT a window anchor: it exists so the freshness probe reads a
 	 * bounded slice rather than the whole table, and it is far longer than any
 	 * observed reporting lag. A store whose data stopped longer ago than this
-	 * reports no definitive date at all, which is the honest answer.
+	 * reports no definitive date at all, rather than inventing one.
 	 */
 	scanDays: 90,
 } as const;
@@ -192,8 +191,9 @@ export function searchQueryPerformanceFreshnessQuery(
  *
  * The two-hour buffer matches the measured p95 report delay and the shipped
  * r2601/r2604 date-window rule. A row-count fraction is specifically unsuitable:
- * an unfinished high-volume store measured on 2026-08-18 had already reached
- * 60% of its median day and would have passed the sessions reader's 50% rule.
+ * a high-volume store can accumulate enough rows before its day is over to clear
+ * the sessions reader's `FRESHNESS_RULE.fraction` threshold, so the fraction
+ * would pass a day that is still filling.
  */
 export function ordersFreshnessQuery(stores: readonly StoreRef[]): RawBuilder<FreshnessRow> {
 	const merchantId = qualified("amzreport_ALL_ORDERS", "o", "merchant_id");

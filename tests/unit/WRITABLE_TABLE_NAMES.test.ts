@@ -2,10 +2,10 @@
  * Unit tests for the writable-table surface.
  *
  * `WRITABLE_TABLE_NAMES` is generated from the schema DSL's per-table read/write
- * flag. Its exact membership is pinned by the drift gate in `tests/integration/`,
+ * flag. Its exact membership is pinned by the drift check in `tests/integration/`,
  * and the subset relationship to `DB` by `Pick<DB, WritableTableName>` in
  * `src/WritableDB.ts`, which `deno task check` verifies on every run. What is
- * left to pin here is what neither of those can see: the drift gate compares the
+ * left to pin here is what neither of those can see: the drift check compares the
  * generator's output with itself, so a generator that emits an empty, duplicated
  * or unsorted list passes it.
  *

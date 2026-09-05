@@ -349,7 +349,7 @@ does not verify against the public root store. Through `createDb()`,
 | anything else | An error naming the valid modes. |
 
 Modes are matched exactly, so `sslmode=Require` is an error rather than
-something quietly different from what you wrote.
+something silently different from what you wrote.
 
 `verify-ca` **requires a CA and throws without one**. Verifying a chain
 against the public root store and skipping the hostname check accepts any
@@ -367,7 +367,7 @@ for `allow`, and it can only fail where libpq would have connected in
 plaintext.
 
 **An explicit `ssl` option wins over the connection string.** A customer
-holding a vendor root CA writes
+holding a private root CA writes
 
 ```ts
 createDb({ connectionString: "postgres://…?sslmode=verify-full", ssl: { ca } });
