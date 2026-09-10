@@ -19,11 +19,11 @@
  * database can observe, so its patch slot runs ahead; this constant
  * only moves when the schema does.
  */
-export const SCHEMA_VERSION: string = "0.1.5";
+export const SCHEMA_VERSION: string = "0.1.6";
 
 /**
  * SHA-256 of the generated `db.ts`, for identifying exactly which generated
  * surface a build carries. Informational: compatibility is decided on
  * `SCHEMA_VERSION`, because a database cannot know this hash.
  */
-export const SCHEMA_HASH: string = "bf660be7110c41b5ebf3186de385ab9ed6fe57c03380df9e18f14b017cd85b79";
+export const SCHEMA_HASH: string = "e447a93917be2757777e22b4c31ff9d904aa05d8fe2b303215e82e9d1afc84e5";

@@ -401,6 +401,44 @@ export interface DbView_amazon_fba_inventory_summary {
 }
 
 /**
+ * Core fulfillment-center reference: one canonical country and established
+ * physical/forwarding address arrays per fulfillment-center code. No
+ * diagnostic evidence or history is stored.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amazon_fulfillment_center {
+	/**
+	 * Country elected from retained ledger rows or explicitly chosen; null means unresolved or unknown.
+	 */
+	countryCode: string | null;
+	/**
+	 * When the core reference row was first stored. Preserved from core when synchronized to a tenant.
+	 */
+	createdAt: InstantColumn;
+	/**
+	 * Normalized forwarding addresses with an established role; their countries do not elect the center country. Stored together as a JSONB array.
+	 */
+	forwardingAddresses: Json;
+	/**
+	 * Amazon fulfillment-center code, which globally identifies the facility by itself.
+	 */
+	fulfillmentCenter: string;
+	/**
+	 * Normalized facility addresses with an established physical role; stored together as a JSONB array.
+	 */
+	physicalAddresses: Json;
+	/**
+	 * Amazon region from authenticated connector metadata; a facility property, not part of its identity. Never inferred from country or address.
+	 */
+	region: string;
+	/**
+	 * When canonical values last changed in core. Preserved from core when synchronized to a tenant; unchanged canonical values do not advance it.
+	 */
+	updatedAt: InstantColumn;
+}
+
+/**
  * Flattened view of all merchant listings — active, inactive and incomplete —
  * with full product metadata, from the GET_MERCHANT_LISTINGS_ALL_DATA report
  * (amzreport_MERCHANT_LISTINGS_ALL). Condition codes are decoded, fulfillment
@@ -1405,6 +1443,185 @@ export interface DbTable_amzfact_fnsku_fbaInventory {
 	totalUnfulfillableQuantity: number | null;
 	updatedAt: InstantColumn;
 	warehouseDamagedQuantity: number | null;
+}
+
+/**
+ * FBA inventory ledger estimated from amzreport_LEDGER_DETAIL for the days
+ * after the merchant's newest amzfact_fnsku_ledger_history day: one row per
+ * (merchant, fulfillment center, FNSKU, disposition) and day with a detail
+ * event, cumulative from the key's newest summary row. Provisional: replaced
+ * when the summary for the day lands.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzfact_fnsku_ledger_estimate {
+	/**
+	 * Day of the key's newest summary row, whose ending balance the estimate starts from; null when the summary has never listed the key and the estimate starts from zero
+	 */
+	anchorDate: PlainDateColumn | null;
+	/**
+	 * Business day the row describes; sparse, not one row per day
+	 */
+	date: PlainDateColumn;
+	/**
+	 * Ledger disposition such as SELLABLE or CUSTOMER_DAMAGED, exactly as reported
+	 */
+	disposition: string;
+	/**
+	 * Starting balance plus every signed movement of the day
+	 */
+	endingWarehouseBalance: number;
+	/**
+	 * Amazon fulfillment network SKU, the physical pool
+	 */
+	fnsku: string;
+	/**
+	 * Amazon fulfillment-center code the units sat in, exactly as the ledger reports spell it
+	 */
+	fulfillmentCenter: string;
+	/**
+	 * Units in transit between centers, a separate state only the summary reports; null for DETAIL
+	 */
+	inTransitBetweenWarehouses: number | null;
+	/**
+	 * Amazon merchant (seller) id owning the units
+	 */
+	merchantId: string;
+	/**
+	 * Signed sum of the day's movements as the source reports them; in-transit units are excluded
+	 */
+	netMovement: number;
+	/**
+	 * SUMMARY when the row is a DAILY/FC ledger summary row, which is authoritative; DETAIL when it is estimated from detail events after the merchant's newest summary day
+	 */
+	source: string;
+	/**
+	 * 1 for SUMMARY; the number of detail events aggregated into the row for DETAIL
+	 */
+	sourceRowCount: number;
+	/**
+	 * Units in the warehouse at the start of the day: the summary's own figure for SUMMARY, the key's newest summary ending balance carried through earlier estimate days for DETAIL, 0 when the summary has never listed the key
+	 */
+	startingWarehouseBalance: number;
+}
+
+/**
+ * FBA inventory ledger facts at the physical grain: one row per (merchant,
+ * fulfillment center, FNSKU, disposition) and DAILY/FC summary day, restated
+ * from amzreport_LEDGER_SUMMARY. Sparse: an absent key on a day sat at zero;
+ * an absent day is a missing summary report. Country and region come from
+ * amazon_fulfillment_center.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzfact_fnsku_ledger_history {
+	/**
+	 * Summary day the balances rest on: always the row's own day
+	 */
+	anchorDate: PlainDateColumn;
+	/**
+	 * Business day the row describes; sparse, not one row per day
+	 */
+	date: PlainDateColumn;
+	/**
+	 * Ledger disposition such as SELLABLE or CUSTOMER_DAMAGED, exactly as reported
+	 */
+	disposition: string;
+	/**
+	 * Starting balance plus every signed movement of the day
+	 */
+	endingWarehouseBalance: number;
+	/**
+	 * Amazon fulfillment network SKU, the physical pool
+	 */
+	fnsku: string;
+	/**
+	 * Amazon fulfillment-center code the units sat in, exactly as the ledger reports spell it
+	 */
+	fulfillmentCenter: string;
+	/**
+	 * Units in transit between centers, a separate state only the summary reports; null for DETAIL
+	 */
+	inTransitBetweenWarehouses: number | null;
+	/**
+	 * Amazon merchant (seller) id owning the units
+	 */
+	merchantId: string;
+	/**
+	 * Signed sum of the day's movements as the source reports them; in-transit units are excluded
+	 */
+	netMovement: number;
+	/**
+	 * SUMMARY when the row is a DAILY/FC ledger summary row, which is authoritative; DETAIL when it is estimated from detail events after the merchant's newest summary day
+	 */
+	source: string;
+	/**
+	 * 1 for SUMMARY; the number of detail events aggregated into the row for DETAIL
+	 */
+	sourceRowCount: number;
+	/**
+	 * Units in the warehouse at the start of the day: the summary's own figure for SUMMARY, the key's newest summary ending balance carried through earlier estimate days for DETAIL, 0 when the summary has never listed the key
+	 */
+	startingWarehouseBalance: number;
+}
+
+/**
+ * Current position per FBA ledger key (merchant, fulfillment center, FNSKU,
+ * disposition): the key's newest amzfact_fnsku_ledger_history row extended by
+ * the detail events after the merchant's newest summary day, collapsed to one
+ * row. Rows carry different dates.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzfact_fnsku_ledger_latest {
+	/**
+	 * Day of the key's newest summary row, whose ending balance the estimate starts from; null when the summary has never listed the key and the estimate starts from zero
+	 */
+	anchorDate: PlainDateColumn | null;
+	/**
+	 * Business day the row describes; sparse, not one row per day
+	 */
+	date: PlainDateColumn;
+	/**
+	 * Ledger disposition such as SELLABLE or CUSTOMER_DAMAGED, exactly as reported
+	 */
+	disposition: string;
+	/**
+	 * Starting balance plus every signed movement of the day
+	 */
+	endingWarehouseBalance: number;
+	/**
+	 * Amazon fulfillment network SKU, the physical pool
+	 */
+	fnsku: string;
+	/**
+	 * Amazon fulfillment-center code the units sat in, exactly as the ledger reports spell it
+	 */
+	fulfillmentCenter: string;
+	/**
+	 * Units in transit between centers, a separate state only the summary reports; null for DETAIL
+	 */
+	inTransitBetweenWarehouses: number | null;
+	/**
+	 * Amazon merchant (seller) id owning the units
+	 */
+	merchantId: string;
+	/**
+	 * Signed sum of the day's movements as the source reports them; in-transit units are excluded
+	 */
+	netMovement: number;
+	/**
+	 * SUMMARY when the row is a DAILY/FC ledger summary row, which is authoritative; DETAIL when it is estimated from detail events after the merchant's newest summary day
+	 */
+	source: string;
+	/**
+	 * 1 for SUMMARY; the number of detail events aggregated into the row for DETAIL
+	 */
+	sourceRowCount: number;
+	/**
+	 * Units in the warehouse at the start of the day: the summary's own figure for SUMMARY, the key's newest summary ending balance carried through earlier estimate days for DETAIL, 0 when the summary has never listed the key
+	 */
+	startingWarehouseBalance: number;
 }
 
 /**
@@ -3627,7 +3844,7 @@ export interface DbTable_amzspapi_searchCatalogItems_v2020__scrape {
 	 */
 	depthPages: number;
 	/**
-	 * Reserved; always NULL now that only completed ('ok') scrapes write a header
+	 * Reserved; always NULL. Only completed ('ok') scrapes write a header
 	 */
 	error: string | null;
 	/**
@@ -6566,6 +6783,7 @@ export interface DB {
 	amazon_browse_node_query: DbTable_amazon_browse_node_query;
 	amazon_country: DbTable_amazon_country;
 	amazon_fba_inventory_summary: DbView_amazon_fba_inventory_summary;
+	amazon_fulfillment_center: DbTable_amazon_fulfillment_center;
 	amazon_listing_all: DbView_amazon_listing_all;
 	amazon_listing_open: DbView_amazon_listing_open;
 	amazon_marketplace: DbTable_amazon_marketplace;
@@ -6584,6 +6802,9 @@ export interface DB {
 	amzagg_profit__orderItem: DbTable_amzagg_profit__orderItem;
 	amzagg_profit__orderItemProjectionState: DbTable_amzagg_profit__orderItemProjectionState;
 	amzfact_fnsku_fbaInventory: DbTable_amzfact_fnsku_fbaInventory;
+	amzfact_fnsku_ledger_estimate: DbTable_amzfact_fnsku_ledger_estimate;
+	amzfact_fnsku_ledger_history: DbTable_amzfact_fnsku_ledger_history;
+	amzfact_fnsku_ledger_latest: DbTable_amzfact_fnsku_ledger_latest;
 	amzfact_ledger_build: DbTable_amzfact_ledger_build;
 	amzfact_ledger_item: DbTable_amzfact_ledger_item;
 	amzfact_ledger_posting: DbTable_amzfact_ledger_posting;
