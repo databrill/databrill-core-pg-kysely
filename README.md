@@ -47,17 +47,27 @@ Node consumers can install through JSR's npm compatibility layer. Add an
 npm publish (via dnt) is not done yet; the JSR npm-compat layer is the only
 path for Node today.
 
+Either way, install `effect` alongside it — `deno add npm:effect`, or
+`npm install effect`. This package returns `Either` and `Effect` values, so
+unwrapping one means importing `effect` in your own code, and that import has
+to resolve to YOUR dependency rather than to this package's. It declares a
+range rather than one version so both requests resolve to a single shared
+install. Two installs also work, but every operation then logs `Executing an
+Effect versioned … with a Runtime of version …`, which is effect telling you
+the program and the runtime executing it came from different copies.
+
 ## Quickstart
 
 ```ts
 import { Effect, Either } from "effect";
 import { checkSchemaCompatibility, createDb } from "@databrill/core-pg-kysely";
 
-const { db, write, destroy } = Either.getOrThrow(
+const { db, write, destroy } = Either.getOrThrowWith(
 	createDb({
 		connectionString: Deno.env.get("DATABRILL_DATABASE_URL"),
 		schema: "w123456789",
 	}),
+	(error) => error,
 );
 
 try {
@@ -84,6 +94,14 @@ Effect programs. Constructing a program does no work; compose it with `yield*` i
 The connection factory, synchronous validation, Temporal conversion, and canonical query compilation
 return `Either`; `createCanonicalQueryBuilder()` returns a plain Kysely instance.
 An `Either` can also be yielded directly inside an `Effect.gen` program.
+
+`Either.getOrThrowWith(…, (error) => error)` rather than the shorter
+`Either.getOrThrow` in every example here, and the difference is not style:
+`getOrThrow` discards the `Left` and throws
+`Error("getOrThrow called on a Left")` in its place, so the reason the call
+failed — an invalid schema name, a certificate path that does not exist, the
+missing-`Temporal` guidance below — never reaches you. Match on the `Either`
+instead wherever you can act on the failure rather than raise it.
 
 The caller owns each acquired handle until `destroy()` succeeds. Execute cleanup
 in a `finally` block when using native async code. Concurrent cleanup calls share
@@ -246,9 +264,11 @@ libpq's meanings, which are not the ones `pg` gives it — see "TLS and
 Values come back as `Temporal` objects, so the runtime needs `Temporal`.
 Newer runtimes have it built in; check yours with
 `typeof globalThis.Temporal`. Where it is missing, load a polyfill before
-connecting, `import "temporal-polyfill/global"`, or executing `createDb()` fails with a
-clear error explaining exactly that at connection time rather than a bare
-`ReferenceError` on your first row read.
+connecting, `import "temporal-polyfill/global"`. Otherwise `createDb()`
+returns a `Left` whose error explains exactly that, at connection time
+rather than a bare `ReferenceError` on your first row read — provided you
+unwrap it in a way that keeps the error, which is why the examples above use
+`Either.getOrThrowWith` and not `Either.getOrThrow`.
 
 TypeScript needs the `Temporal` type declarations too, which is a separate
 question from whether your runtime has the object:
@@ -465,7 +485,7 @@ Calling `createDb()` also provides `pool`, an Effect interface to the connection
 share, for connection metrics and for SQL this package cannot express:
 
 ```ts
-const { db, pool, destroy } = Either.getOrThrow(createDb(connectionString));
+const { db, pool, destroy } = Either.getOrThrowWith(createDb(connectionString), (error) => error);
 
 console.log(pool.totalCount, pool.idleCount, pool.waitingCount);
 const { rows } = await Effect.runPromise(pool.query("select now() as at"));

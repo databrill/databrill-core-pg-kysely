@@ -190,10 +190,13 @@ export interface TenantDb {
  * ```ts
  * import { Effect, Either } from "effect";
  *
- * const { db, write, destroy } = Either.getOrThrow(createDb({
- * 	connectionString: process.env.DATABRILL_DATABASE_URL,
- * 	schema: "w123456789",
- * }));
+ * const { db, write, destroy } = Either.getOrThrowWith(
+ * 	createDb({
+ * 		connectionString: process.env.DATABRILL_DATABASE_URL,
+ * 		schema: "w123456789",
+ * 	}),
+ * 	(error) => error,
+ * );
  *
  * const rows = await db.selectFrom("amazon_listing_open").selectAll().execute();
  * await Effect.runPromise(destroy());
@@ -212,7 +215,11 @@ export interface TenantDb {
  * `sslmode`" section.
  *
  * Requires `Temporal`, from the runtime itself or from
- * `temporal-polyfill/global`. Execution fails before creating a pool if it is missing.
+ * `temporal-polyfill/global`. A missing one is a `Left` returned before any pool
+ * is created, carrying the guidance from {@link requireTemporal} — which reaches
+ * the caller only through an unwrap that keeps the `Left`, so the examples here
+ * use `Either.getOrThrowWith(…, (error) => error)`. `Either.getOrThrow` replaces
+ * it with `Error("getOrThrow called on a Left")`.
  */
 export function createDb(options: string | CreateDbOptions): Either.Either<TenantDb, Error> {
 	// Pool and Kysely construction open no connections. Database work starts

@@ -6,10 +6,13 @@
  * import { Effect, Either } from "effect";
  * import { checkSchemaCompatibility, createDb } from "@databrill/core-pg-kysely";
  *
- * const { db, write, destroy } = Either.getOrThrow(createDb({
- * 	connectionString: Deno.env.get("DATABRILL_DATABASE_URL"),
- * 	schema: "w123456789",
- * }));
+ * const { db, write, destroy } = Either.getOrThrowWith(
+ * 	createDb({
+ * 		connectionString: Deno.env.get("DATABRILL_DATABASE_URL"),
+ * 		schema: "w123456789",
+ * 	}),
+ * 	(error) => error,
+ * );
  *
  * try {
  * 	const compatibility = await Effect.runPromise(checkSchemaCompatibility(db));

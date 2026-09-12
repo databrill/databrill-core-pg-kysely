@@ -5,7 +5,7 @@
     "jsr:@std/internal@^1.0.12": "1.0.14",
     "jsr:@std/yaml@1": "1.1.2",
     "npm:@types/pg@^8.16.0": "8.23.1",
-    "npm:effect@3.21.2": "3.21.2",
+    "npm:effect@^3.21.2": "3.22.2",
     "npm:kysely@0.29": "0.29.4",
     "npm:pg@^8.16.3": "8.23.0"
   },
@@ -41,8 +41,8 @@
         "pg-types"
       ]
     },
-    "effect@3.21.2": {
-      "integrity": "sha512-rXd2FGDM8KdjSIrc+mqEELo7ScW7xTVxEf1iInmPSpIde9/nyGuFM710cjTo7/EreGXiUX2MOonPpprbz2XHCg==",
+    "effect@3.22.2": {
+      "integrity": "sha512-fm1CQXCs7GTMwpadZxwU5rnAb2bN6mbQpknq/pXBGCzSKkosNYb9k0wsoL0TfB10rSa5xOEZJjo77u/KLXSANg==",
       "dependencies": [
         "@standard-schema/spec",
         "fast-check"
@@ -134,7 +134,7 @@
   },
   "workspace": {
     "dependencies": [
-      "npm:effect@3.21.2",
+      "npm:effect@^3.21.2",
       "npm:kysely@0.29",
       "npm:pg@^8.16.3"
     ]
