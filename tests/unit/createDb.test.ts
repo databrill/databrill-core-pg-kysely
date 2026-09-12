@@ -1,3 +1,5 @@
+import { Cause, Effect, Either, Exit } from "effect";
+import { assertEitherFailure } from "./assertEitherFailure.ts";
 /**
  * Unit tests for the connection factory's non-query behaviour.
  *
@@ -8,10 +10,10 @@
  * Public-safe: this file syncs to the public mirror.
  */
 
-import { assert, assertEquals, assertThrows } from "jsr:@std/assert@1.0.19";
+import { assert, assertEquals } from "jsr:@std/assert@1.0.19";
 // @ts-types="npm:@types/pg@^8.16.0"
 import { Pool } from "pg";
-import { createDb, type TenantPool } from "../../src/createDb.ts";
+import { createDb, type CreateDbOptions, type TenantDb, type TenantPool } from "../../src/createDb.ts";
 import { TESTING_tenantSchema1 } from "../testConstants.ts";
 
 /** Never connected to; the pool stays idle until a query asks for a client. */
@@ -23,31 +25,31 @@ Deno.test("createDb - destroy() closes the pool for a caller who only ever used 
 	// over the shared pool. Routing teardown through the read handle therefore
 	// did nothing at all for an ingestion script that only wrote — the pool
 	// stayed open, and the process could not exit.
-	const tenant = createDb(UNUSED_URL);
+	const tenant = createInspectedDb(UNUSED_URL);
 	tenant.write.insertInto("brand_config_ontology_metadata").values({
 		property: "x",
 		valueType: "STRING",
 		appliesTo: "BOTH",
 	}).compile();
 
-	await tenant.destroy();
+	await Effect.runPromise(tenant.destroy());
 	assert(tenant.pool.ended, "destroy() must end the shared pool even when the read surface was never used");
 });
 
 Deno.test("createDb - destroy() closes the pool for a caller who only ever used `db`", async () => {
-	const tenant = createDb(UNUSED_URL);
+	const tenant = createInspectedDb(UNUSED_URL);
 	tenant.db.selectFrom("databrill_schema_version").select("version").compile();
 
-	await tenant.destroy();
+	await Effect.runPromise(tenant.destroy());
 	assert(tenant.pool.ended);
 });
 
 Deno.test("createDb - destroy() is idempotent", async () => {
 	// Both surfaces share one pool, so there is one teardown; calling `end()`
 	// twice on a pg pool throws.
-	const tenant = createDb(UNUSED_URL);
-	await tenant.destroy();
-	await tenant.destroy();
+	const tenant = createInspectedDb(UNUSED_URL);
+	await Effect.runPromise(tenant.destroy());
+	await Effect.runPromise(tenant.destroy());
 	assert(tenant.pool.ended);
 });
 
@@ -56,23 +58,22 @@ Deno.test("createDb - the pool has an error listener, so an idle-client failure 
 	// a database restart, a pooler recycling a backend. `EventEmitter` throws on
 	// an unhandled `'error'`, so without a listener that becomes an uncaught
 	// exception thrown from inside this library.
-	const tenant = createDb(UNUSED_URL);
-	// `listenerCount` and `emit` are `EventEmitter` internals, deliberately absent
-	// from the published `TenantPool` — they prove an internal guarantee this
-	// package does not promise callers. Narrowing back to the concrete class is how
-	// this test reaches them without widening the published type, and it also
-	// checks the claim `TenantDb.pool`'s docblock makes: the value really is `pg`'s
-	// `Pool`, and only the published type is narrowed. A cast would assert that
-	// claim; `instanceof` verifies it.
-	assert(tenant.pool instanceof Pool, "the exposed pool really is a pg.Pool");
+	const tenant = createInspectedDb(UNUSED_URL);
+	// `listenerCount` and `emit` are EventEmitter internals, deliberately absent
+	// from TenantPool. Capture the native pool during factory construction to
+	// verify the listener while keeping the owned Effect query interface separate.
+	assert(tenant.nativePool instanceof Pool, "the driver pool really is a pg.Pool");
 	try {
-		assert(tenant.pool.listenerCount("error") > 0, "the library-owned pool must handle its own 'error' event");
+		assert(
+			tenant.nativePool.listenerCount("error") > 0,
+			"the library-owned pool must handle its own 'error' event",
+		);
 		// Emitting must not throw. Were there no listener, this line would.
-		tenant.pool.emit("error", new Error("connection terminated unexpectedly"));
+		tenant.nativePool.emit("error", new Error("connection terminated unexpectedly"));
 	} finally {
 		// Teardown goes through `destroy()`, which is the whole reason `TenantPool`
 		// declares no `end()`; it calls `pool.end()` internally and memoizes it.
-		await tenant.destroy();
+		await Effect.runPromise(tenant.destroy());
 	}
 });
 
@@ -81,13 +82,11 @@ Deno.test("createDb - a caller's own 'error' listener is added, not substituted 
 	// a promise about it: "Attach your own idle-client error listener; it does not
 	// displace this package's." Nothing else exercises either the published `on`
 	// signature or that promise, so without this test both are prose. The
-	// swallowing listener `createDb` installs is what makes the promise load
-	// bearing — a caller who lost it would get no visibility at all.
-	const tenant = createDb(UNUSED_URL);
-	// Narrowed for the same reason as the test above: `listenerCount` and `emit`
-	// are `EventEmitter` internals `TenantPool` deliberately does not publish.
-	assert(tenant.pool instanceof Pool, "the exposed pool really is a pg.Pool");
-	const libraryListeners = tenant.pool.listenerCount("error");
+	// listener `createDb` installs must remain alongside the caller's listener.
+	const tenant = createInspectedDb(UNUSED_URL);
+	// The captured pool exposes the EventEmitter details TenantPool omits.
+	assert(tenant.nativePool instanceof Pool, "the driver pool really is a pg.Pool");
+	const libraryListeners = tenant.nativePool.listenerCount("error");
 	try {
 		const seen: string[] = [];
 		// Deliberately attached through the PUBLISHED `TenantPool`, not through the
@@ -99,14 +98,14 @@ Deno.test("createDb - a caller's own 'error' listener is added, not substituted 
 		});
 
 		assertEquals(
-			tenant.pool.listenerCount("error"),
+			tenant.nativePool.listenerCount("error"),
 			libraryListeners + 1,
 			"a caller's listener must be added alongside the library's, not replace it",
 		);
-		tenant.pool.emit("error", new Error("connection terminated unexpectedly"));
+		tenant.nativePool.emit("error", new Error("connection terminated unexpectedly"));
 		assertEquals(seen, ["connection terminated unexpectedly"], "the caller's own listener must actually run");
 	} finally {
-		await tenant.destroy();
+		await Effect.runPromise(tenant.destroy());
 	}
 });
 
@@ -114,12 +113,16 @@ Deno.test("createDb - a schema name that is not a plain identifier is rejected",
 	// The schema name reaches Kysely's identifier quoting rather than a bound
 	// parameter, so anything unusual is refused outright instead of escaped.
 	for (const bad of ['w1"; drop table x --', "w1 w2", "1w", "", "public.other", "w1'"]) {
-		assertThrows(() => createDb({ connectionString: UNUSED_URL, schema: bad }), Error, "Invalid schema name");
+		assertEitherFailure(
+			() => createDb({ connectionString: UNUSED_URL, schema: bad }),
+			Error,
+			"Invalid schema name",
+		);
 	}
 });
 
 Deno.test("createDb - ordinary schema names are accepted and qualify the SQL", async () => {
-	const tenant = createDb({ connectionString: UNUSED_URL, schema: TESTING_tenantSchema1 });
+	const tenant = createInspectedDb({ connectionString: UNUSED_URL, schema: TESTING_tenantSchema1 });
 	try {
 		const compiled = tenant.db.selectFrom("databrill_schema_version").select("version").compile();
 		assert(
@@ -127,7 +130,7 @@ Deno.test("createDb - ordinary schema names are accepted and qualify the SQL", a
 			`the schema must be qualified in the emitted SQL, got: ${compiled.sql}`,
 		);
 	} finally {
-		await tenant.destroy();
+		await Effect.runPromise(tenant.destroy());
 	}
 });
 
@@ -136,15 +139,16 @@ Deno.test("createDb - a sslmode in the connection string reaches the pool as a s
 	// right answer; only this proves `createDb()` puts that answer into the pool
 	// config instead of forwarding the caller's original string — which `pg` would
 	// then re-parse, overwriting the resolved `ssl` with its own reading.
-	const tenant = createDb({ connectionString: "postgres://u:p@127.0.0.1:1/db?application_name=x&sslmode=require" });
-	// Narrowed for the same reason as the tests above: `options` is an internal
-	// `pg` field the published `TenantPool` deliberately does not declare.
-	assert(tenant.pool instanceof Pool, "the exposed pool really is a pg.Pool");
+	const tenant = createInspectedDb({
+		connectionString: "postgres://u:p@127.0.0.1:1/db?application_name=x&sslmode=require",
+	});
+	// The captured pool exposes the driver options TenantPool omits.
+	assert(tenant.nativePool instanceof Pool, "the driver pool really is a pg.Pool");
 	try {
-		assertEquals(tenant.pool.options.connectionString, "postgres://u:p@127.0.0.1:1/db?application_name=x");
-		assertEquals(tenant.pool.options.ssl, { rejectUnauthorized: false });
+		assertEquals(tenant.nativePool.options.connectionString, "postgres://u:p@127.0.0.1:1/db?application_name=x");
+		assertEquals(tenant.nativePool.options.ssl, { rejectUnauthorized: false });
 	} finally {
-		await tenant.destroy();
+		await Effect.runPromise(tenant.destroy());
 	}
 });
 
@@ -155,13 +159,13 @@ Deno.test("createDb - a connection string with no sslmode leaves no ssl key on t
 	// a caller who never mentioned TLS. Nothing in `sslmode.test.ts` can observe
 	// this — `resolveSslMode` returning `ssl: undefined` does not prove the key was
 	// omitted downstream.
-	const tenant = createDb(UNUSED_URL);
-	assert(tenant.pool instanceof Pool, "the exposed pool really is a pg.Pool");
+	const tenant = createInspectedDb(UNUSED_URL);
+	assert(tenant.nativePool instanceof Pool, "the driver pool really is a pg.Pool");
 	try {
-		assert(!("ssl" in tenant.pool.options), "no ssl key may be invented, or PGSSLMODE stops working");
-		assertEquals(tenant.pool.options.connectionString, UNUSED_URL);
+		assert(!("ssl" in tenant.nativePool.options), "no ssl key may be invented, or PGSSLMODE stops working");
+		assertEquals(tenant.nativePool.options.connectionString, UNUSED_URL);
 	} finally {
-		await tenant.destroy();
+		await Effect.runPromise(tenant.destroy());
 	}
 });
 
@@ -174,12 +178,103 @@ Deno.test("createDb - an explicit ssl option reaches the pool intact and the str
 	// than `undefined`. That one-word slip reinstates the bug outright, and every
 	// other test in both files stays green through it.
 	const callerSsl = { ca: "PEM" };
-	const tenant = createDb({ connectionString: `${UNUSED_URL}?sslmode=require`, ssl: callerSsl });
-	assert(tenant.pool instanceof Pool, "the exposed pool really is a pg.Pool");
+	const tenant = createInspectedDb({ connectionString: `${UNUSED_URL}?sslmode=require`, ssl: callerSsl });
+	assert(tenant.nativePool instanceof Pool, "the driver pool really is a pg.Pool");
 	try {
-		assertEquals(tenant.pool.options.ssl, callerSsl, "the caller's ssl must survive a sslmode in the string");
-		assertEquals(tenant.pool.options.connectionString, UNUSED_URL);
+		assertEquals(tenant.nativePool.options.ssl, callerSsl, "the caller's ssl must survive a sslmode in the string");
+		assertEquals(tenant.nativePool.options.connectionString, UNUSED_URL);
 	} finally {
-		await tenant.destroy();
+		await Effect.runPromise(tenant.destroy());
+	}
+});
+
+/** Capture the driver's pool while the factory attaches its mandatory error listener. */
+function createInspectedDb(options: string | CreateDbOptions): TenantDb & { readonly nativePool: Pool } {
+	let nativePool: Pool | undefined;
+	const original = Pool.prototype.on;
+	Pool.prototype.on = function (event, listener) {
+		nativePool = this;
+		return original.call(this, event, listener);
+	};
+	try {
+		const tenant = Either.getOrThrow(createDb(options));
+		assert(nativePool !== undefined, "factory must register its pool listener");
+		return { ...tenant, nativePool };
+	} finally {
+		Pool.prototype.on = original;
+	}
+}
+
+Deno.test("createDb - each synchronous call returns a separate pool without opening connections", async () => {
+	const first = createDb(UNUSED_URL);
+	const second = createDb(UNUSED_URL);
+	assert(Either.isRight(first));
+	assert(Either.isRight(second));
+	try {
+		assert(first.right.pool !== second.right.pool);
+		assertEquals(first.right.pool.totalCount, 0);
+		assertEquals(second.right.pool.totalCount, 0);
+	} finally {
+		await Effect.runPromise(first.right.destroy());
+		await Effect.runPromise(second.right.destroy());
+	}
+});
+
+Deno.test("createDb - concurrent destroy shares one failure and a later call retries", async () => {
+	const tenant = createInspectedDb(UNUSED_URL);
+	const originalEnd = tenant.nativePool.end.bind(tenant.nativePool);
+	const pending = Promise.withResolvers<void>();
+	const failure = new Error("temporary shutdown failure");
+	let calls = 0;
+	Object.defineProperty(tenant.nativePool, "end", {
+		value: () => {
+			calls++;
+			return calls === 1 ? pending.promise : originalEnd();
+		},
+	});
+
+	const close = tenant.destroy();
+	assertEquals(calls, 0, "constructing cleanup must not start it");
+	const first = Effect.runPromiseExit(close);
+	const second = Effect.runPromiseExit(close);
+	assertEquals(calls, 1);
+	pending.reject(failure);
+	for (const result of await Promise.all([first, second])) {
+		assert(Exit.isFailure(result));
+		assert(Cause.isFailType(result.cause));
+		assertEquals(result.cause.error, failure);
+	}
+
+	await Effect.runPromise(close);
+	await Effect.runPromise(close);
+	assertEquals(calls, 2);
+	assert(tenant.pool.ended);
+});
+
+Deno.test("createDb - pool query captures synchronous driver throws and rejection without running early", async () => {
+	const tenant = createInspectedDb(UNUSED_URL);
+	const failure = new Error("query failure");
+	let calls = 0;
+	Object.defineProperty(tenant.nativePool, "query", {
+		value: () => {
+			calls++;
+			if (calls === 1) {
+				throw failure;
+			}
+			return Promise.reject(failure);
+		},
+	});
+	try {
+		const query = tenant.pool.query("SELECT 1");
+		assertEquals(calls, 0);
+		for (let attempt = 0; attempt < 2; attempt++) {
+			const result = await Effect.runPromiseExit(query);
+			assert(Exit.isFailure(result));
+			assert(Cause.isFailType(result.cause));
+			assertEquals(result.cause.error, failure);
+		}
+		assertEquals(calls, 2);
+	} finally {
+		await Effect.runPromise(tenant.destroy());
 	}
 });

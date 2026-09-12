@@ -1,4 +1,6 @@
+import { Effect } from "effect";
 import { type Kysely, type RawBuilder, sql } from "kysely";
+import { tryOrOperationError } from "../tryOrOperationError.ts";
 import type { DB } from "../types.ts";
 import { type CanonicalQueryRunner, executeCompiled } from "./execute.ts";
 import { col, qualified, rel } from "./names.ts";
@@ -306,7 +308,7 @@ function freshnessQuery(shape: FreshnessShape): RawBuilder<FreshnessRow> {
 }
 
 /** Run a freshness query and fold the rows into a {@link SourceFreshness}. */
-export async function readFreshness(
+export function readFreshness(
 	db: Kysely<DB>,
 	runner: CanonicalQueryRunner,
 	params: {
@@ -315,24 +317,29 @@ export async function readFreshness(
 		readonly rule: string;
 		readonly query: RawBuilder<FreshnessRow>;
 	},
-): Promise<SourceFreshness> {
-	const rows = await executeCompiled(runner, params.query.compile(db));
-	const perStore: readonly StoreFreshness[] = rows.map((row) => ({
-		merchantId: row.merchantId,
-		marketplaceId: row.marketplaceId,
-		maxPresentDate: row.maxPresentDate,
-		maxDefinitiveDate: row.maxDefinitiveDate,
-		baselineSignal: row.baselineSignal,
-	}));
-	const definitive = perStore
-		.map((store) => store.maxDefinitiveDate)
-		.filter((date): date is string => date !== null)
-		.sort();
-	return {
-		source: params.source,
-		relation: params.relation,
-		rule: params.rule,
-		perStore,
-		anchorDate: definitive[0] ?? null,
-	};
+): Effect.Effect<SourceFreshness, Error> {
+	return Effect.gen(function* () {
+		const rows = yield* executeCompiled(
+			runner,
+			yield* tryOrOperationError(() => params.query.compile(db)),
+		);
+		const perStore: readonly StoreFreshness[] = rows.map((row) => ({
+			merchantId: row.merchantId,
+			marketplaceId: row.marketplaceId,
+			maxPresentDate: row.maxPresentDate,
+			maxDefinitiveDate: row.maxDefinitiveDate,
+			baselineSignal: row.baselineSignal,
+		}));
+		const definitive = perStore
+			.map((store) => store.maxDefinitiveDate)
+			.filter((date): date is string => date !== null)
+			.sort();
+		return {
+			source: params.source,
+			relation: params.relation,
+			rule: params.rule,
+			perStore,
+			anchorDate: definitive[0] ?? null,
+		};
+	});
 }

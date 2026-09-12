@@ -1,6 +1,8 @@
+import { assertEitherFailure } from "./assertEitherFailure.ts";
+import { Either } from "effect";
 /** Compile-time checks for Search Query Performance's two-stage aggregation. */
 
-import { assert, assertEquals, assertStringIncludes, assertThrows } from "jsr:@std/assert@1.0.19";
+import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.19";
 import { keyColumnsForMeasures, measuresForLevel } from "../../src/canonical/declaration.ts";
 import { createCanonicalQueryBuilder } from "../../src/canonical/execute.ts";
 import { searchQueryPerformanceFreshnessQuery } from "../../src/canonical/freshness.ts";
@@ -37,7 +39,7 @@ function paramsFor(
 }
 
 Deno.test("Search Query Performance compile - normalizes market counts before outer aggregation", () => {
-	const compiled = compileSearchQueryPerformanceQuery(db, paramsFor("SUM"));
+	const compiled = Either.getOrThrow(compileSearchQueryPerformanceQuery(db, paramsFor("SUM")));
 	assertStringIncludes(
 		compiled.sql,
 		`MAX(("impressionData"->>'totalQueryImpressionCount')::numeric) AS "totalQueryImpressionCount"`,
@@ -54,13 +56,13 @@ Deno.test("Search Query Performance compile - normalizes market counts before ou
 });
 
 Deno.test("Search Query Performance compile - merchant stays only when STORE is the output level", () => {
-	const sum = compileSearchQueryPerformanceQuery(db, paramsFor("SUM"));
+	const sum = Either.getOrThrow(compileSearchQueryPerformanceQuery(db, paramsFor("SUM")));
 	assertEquals(
 		sum.sql.includes(`GROUP BY "merchantId", "marketplaceId", "dateFirst", "dateLast", "searchQuery"`),
 		false,
 	);
 
-	const store = compileSearchQueryPerformanceQuery(db, paramsFor("STORE"));
+	const store = Either.getOrThrow(compileSearchQueryPerformanceQuery(db, paramsFor("STORE")));
 	assertStringIncludes(
 		store.sql,
 		`GROUP BY "merchantId", "marketplaceId", "dateFirst", "dateLast", "searchQuery"`,
@@ -78,12 +80,12 @@ Deno.test("Search Query Performance compile - WEEK and MONTH select source rows 
 			window: { kind: "explicit", ...WINDOW },
 		},
 	});
-	const month = compileSearchQueryPerformanceQuery(db, monthParams);
+	const month = Either.getOrThrow(compileSearchQueryPerformanceQuery(db, monthParams));
 	assertStringIncludes(month.sql, `WHERE "timeUnit" = `);
 	assert(month.parameters.includes("MONTH"));
 	assertEquals(month.sql.includes("date_trunc"), false);
 
-	assertThrows(
+	assertEitherFailure(
 		() =>
 			compileSearchQueryPerformanceQuery(db, {
 				...monthParams,
@@ -95,7 +97,7 @@ Deno.test("Search Query Performance compile - WEEK and MONTH select source rows 
 });
 
 Deno.test("Search Query Performance compile - shares are recomputed and never read from report percentages", () => {
-	const compiled = compileSearchQueryPerformanceQuery(db, paramsFor("SEARCH_QUERY"));
+	const compiled = Either.getOrThrow(compileSearchQueryPerformanceQuery(db, paramsFor("SEARCH_QUERY")));
 	assertEquals(compiled.sql.includes(`->>'asinImpressionShare'`), false);
 	assertEquals(compiled.sql.includes(`->>'asinClickShare'`), false);
 	assertEquals(compiled.sql.includes(`->>'asinPurchaseShare'`), false);
@@ -108,7 +110,7 @@ Deno.test("Search Query Performance compile - returns only the selected count me
 	const selected = AMAZON_REPORT_SEARCH_QUERY_PERFORMANCE.measures.filter((measure) =>
 		measure.name === "asinImpressionCount"
 	);
-	const compiled = compileSearchQueryPerformanceQuery(db, { ...base, measures: selected });
+	const compiled = Either.getOrThrow(compileSearchQueryPerformanceQuery(db, { ...base, measures: selected }));
 	const outerSelect = compiled.sql.slice(compiled.sql.lastIndexOf("SELECT"));
 	assertStringIncludes(outerSelect, `AS "asinImpressionCount"`);
 	assertEquals(outerSelect.includes(`AS "totalQueryImpressionCount"`), false);
@@ -117,18 +119,18 @@ Deno.test("Search Query Performance compile - returns only the selected count me
 
 Deno.test("Search Query Performance compile - corrected market impressions determine a limited keyword ranking", () => {
 	const base = paramsFor("SEARCH_QUERY");
-	const compiled = compileSearchQueryPerformanceQuery(db, {
+	const compiled = Either.getOrThrow(compileSearchQueryPerformanceQuery(db, {
 		...base,
 		request: { ...base.request, limit: 25 },
-	});
+	}));
 	assertStringIncludes(compiled.sql, `ORDER BY SUM("n"."totalQueryImpressionCount") DESC NULLS LAST`);
 	assertStringIncludes(compiled.sql, "LIMIT");
 	assertEquals(compiled.parameters.at(-1), 25);
 
-	assertThrows(
+	assertEitherFailure(
 		() => {
 			const sum = paramsFor("SUM");
-			compileSearchQueryPerformanceQuery(db, { ...sum, request: { ...sum.request, limit: 1 } });
+			return compileSearchQueryPerformanceQuery(db, { ...sum, request: { ...sum.request, limit: 1 } });
 		},
 		Error,
 		"limit is valid only for SEARCH_QUERY/TOTAL",
@@ -149,7 +151,7 @@ Deno.test("Search Query Performance freshness - pins report time unit and exact 
 Deno.test("Search Query Performance compile - every caller filter remains a bind parameter", () => {
 	const base = paramsFor("SUM");
 	const injected = "B0BAD'; DROP TABLE x; --";
-	const compiled = compileSearchQueryPerformanceQuery(db, {
+	const compiled = Either.getOrThrow(compileSearchQueryPerformanceQuery(db, {
 		...base,
 		stores: [{ merchantId: "M-1", marketplaceId: "MP-1" }],
 		request: {
@@ -157,7 +159,7 @@ Deno.test("Search Query Performance compile - every caller filter remains a bind
 			stores: [{ merchantId: "M-1", marketplaceId: "MP-1" }],
 			asins: [injected],
 		},
-	});
+	}));
 	assert(compiled.parameters.includes("M-1"));
 	assert(compiled.parameters.includes("MP-1"));
 	assert(compiled.parameters.includes(injected));

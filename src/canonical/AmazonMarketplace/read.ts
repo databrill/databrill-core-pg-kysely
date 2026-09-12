@@ -1,4 +1,6 @@
-import { type CompiledQuery, type Expression, type Kysely, type RawBuilder, sql } from "kysely";
+import { Effect, Either } from "effect";
+import { tryOrOperationError } from "../../tryOrOperationError.ts";
+import { type CompiledQuery, type Kysely } from "kysely";
 import type { DB } from "../../types.ts";
 import { type CanonicalQueryRunner, executeCompiled } from "../execute.ts";
 import { probeRelations } from "../relations.ts";
@@ -29,59 +31,59 @@ export interface AmazonMarketplaceResult {
 }
 
 /** Read Amazon marketplace reference rows. */
-export async function readAmazonMarketplaces(
+export function readAmazonMarketplaces(
 	db: Kysely<DB>,
 	runner: CanonicalQueryRunner,
 	request: AmazonMarketplaceRequest = {},
-): Promise<AmazonMarketplaceResult> {
-	const present = await probeRelations(db, runner, [AMAZON_MARKETPLACE.source.relation]);
-	if (!present.has(AMAZON_MARKETPLACE.source.relation)) {
-		return {
-			declaration: AMAZON_MARKETPLACE.name,
-			rows: [],
-			unavailable: [{
-				relation: AMAZON_MARKETPLACE.source.relation,
-				reason: AMAZON_MARKETPLACE.source.whenAbsent,
-			}],
-		};
-	}
-	const rows = Array.from(await executeCompiled(runner, compileAmazonMarketplaceQuery(db, request)));
-	return { declaration: AMAZON_MARKETPLACE.name, unavailable: [], rows };
+): Effect.Effect<AmazonMarketplaceResult, Error> {
+	return Effect.gen(function* () {
+		const present = yield* probeRelations(db, runner, [AMAZON_MARKETPLACE.source.relation]);
+		if (!present.has(AMAZON_MARKETPLACE.source.relation)) {
+			return {
+				declaration: AMAZON_MARKETPLACE.name,
+				rows: [],
+				unavailable: [{
+					relation: AMAZON_MARKETPLACE.source.relation,
+					reason: AMAZON_MARKETPLACE.source.whenAbsent,
+				}],
+			};
+		}
+		const rows = Array.from(yield* executeCompiled(runner, yield* compileAmazonMarketplaceQuery(db, request)));
+		return { declaration: AMAZON_MARKETPLACE.name, unavailable: [], rows };
+	});
 }
 
 /** Compile the marketplace lookup without executing it. */
 export function compileAmazonMarketplaceQuery(
 	db: Kysely<DB>,
 	request: AmazonMarketplaceRequest = {},
-): CompiledQuery<AmazonMarketplaceRow> {
-	return db
-		.selectFrom("amazon_marketplace")
-		.select([
-			"marketplace_id as marketplaceId",
-			"marketplace_code as marketplaceCode",
-			"name",
-			"country_code as countryCode",
-			"currency",
-			"lang as languageCode",
-			"domain",
-			"time_zone as timeZone",
-		])
-		.$if(
-			(request.marketplaceIds ?? []).length > 0,
-			(qb) => qb.where(inList(sql.ref("marketplace_id"), request.marketplaceIds ?? [])),
-		)
-		.$if(
-			(request.marketplaceCodes ?? []).length > 0,
-			(qb) => qb.where(inList(sql.ref("marketplace_code"), request.marketplaceCodes ?? [])),
-		)
-		.$if(
-			(request.countryCodes ?? []).length > 0,
-			(qb) => qb.where(inList(sql.ref("country_code"), request.countryCodes ?? [])),
-		)
-		.orderBy("marketplace_id")
-		.compile();
-}
-
-function inList(expression: RawBuilder<unknown>, values: readonly string[]): Expression<boolean> {
-	return sql<boolean>`${expression} IN (${sql.join(values.map((value) => sql`${value}`))})`;
+): Either.Either<CompiledQuery<AmazonMarketplaceRow>, Error> {
+	return tryOrOperationError(() => {
+		return db
+			.selectFrom("amazon_marketplace")
+			.select([
+				"marketplace_id as marketplaceId",
+				"marketplace_code as marketplaceCode",
+				"name",
+				"country_code as countryCode",
+				"currency",
+				"lang as languageCode",
+				"domain",
+				"time_zone as timeZone",
+			])
+			.$if(
+				(request.marketplaceIds ?? []).length > 0,
+				(qb) => qb.where("marketplace_id", "in", request.marketplaceIds ?? []),
+			)
+			.$if(
+				(request.marketplaceCodes ?? []).length > 0,
+				(qb) => qb.where("marketplace_code", "in", request.marketplaceCodes ?? []),
+			)
+			.$if(
+				(request.countryCodes ?? []).length > 0,
+				(qb) => qb.where("country_code", "in", request.countryCodes ?? []),
+			)
+			.orderBy("marketplace_id")
+			.compile();
+	});
 }

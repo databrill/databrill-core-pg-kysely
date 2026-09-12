@@ -50,26 +50,53 @@ path for Node today.
 ## Quickstart
 
 ```ts
+import { Effect, Either } from "effect";
 import { checkSchemaCompatibility, createDb } from "@databrill/core-pg-kysely";
 
-const { db, write, destroy } = createDb({
-	connectionString: Deno.env.get("DATABRILL_DATABASE_URL"),
-	schema: "w123456789",
-});
+const { db, write, destroy } = Either.getOrThrow(
+	createDb({
+		connectionString: Deno.env.get("DATABRILL_DATABASE_URL"),
+		schema: "w123456789",
+	}),
+);
 
-const compatibility = await checkSchemaCompatibility(db);
-if (compatibility.level === "error") {
-	throw new Error(compatibility.message);
+try {
+	const compatibility = await Effect.runPromise(checkSchemaCompatibility(db));
+	if (compatibility.level === "error") {
+		throw new Error(compatibility.message);
+	}
+
+	const listings = await db
+		.selectFrom("amazon_listing_open")
+		.select(["sku", "asin"])
+		.limit(10)
+		.execute();
+} finally {
+	await Effect.runPromise(destroy());
 }
-
-const listings = await db
-	.selectFrom("amazon_listing_open")
-	.select(["sku", "asin"])
-	.limit(10)
-	.execute();
-
-await destroy();
 ```
+
+Raw pool queries, schema checks, and canonical readers return
+Effect programs. Constructing a program does no work; compose it with `yield*` inside
+`Effect.gen`, or execute it at your application's boundary with
+`Effect.runPromise`. The real Kysely builders retain their native Promise APIs.
+
+The connection factory, synchronous validation, Temporal conversion, and canonical query compilation
+return `Either`; `createCanonicalQueryBuilder()` returns a plain Kysely instance.
+An `Either` can also be yielded directly inside an `Effect.gen` program.
+
+The caller owns each acquired handle until `destroy()` succeeds. Execute cleanup
+in a `finally` block when using native async code. Concurrent cleanup calls share
+one attempt; a failed attempt can be retried. Native database queries do not expose
+cancellation here, so interruption waits for an outstanding query to settle before
+cleanup proceeds. No query or write is retried automatically.
+
+The `password` option accepts a string. Resolve credentials before calling
+`createDb()`; credential lookup and its errors belong to the caller.
+
+Foreign Error objects retain their identity; non-Error failures retain the
+original value in `cause`. `Effect.runPromiseExit` exposes typed failures without a FiberFailure
+wrapper.
 
 ## Three entry points
 
@@ -87,7 +114,11 @@ Which one you import decides what you pay for:
   were built against does not cost a database driver.
 
 ```ts
-import { SCHEMA_VERSION, TABLE_NAMES, VIEW_NAMES } from "@databrill/core-pg-kysely/contract";
+import {
+	SCHEMA_VERSION,
+	TABLE_NAMES,
+	VIEW_NAMES,
+} from "@databrill/core-pg-kysely/contract";
 ```
 
 `TABLE_NAMES` and `VIEW_NAMES` are the published tables and the published
@@ -126,19 +157,19 @@ type OpenListing = Selectable<DbView_amazon_listing_open>;
 
 ## Read and write
 
-`createDb()` hands back two Kysely instances sharing one connection pool:
+Calling `createDb()` returns an `Either` containing two Kysely instances sharing one connection pool:
 
 - `db` covers every published table and view. Inserts, updates, deletes,
   and DDL against it are compile-time type errors — it is typed as
   Kysely's `ReadonlyKysely<DB>`.
 - `write` covers only the tables customers are meant to write:
-  - `brand_config_amazon_asin`
-  - `brand_config_amazon_attributes`
-  - `brand_config_amazon_family`
-  - `brand_config_business_attributes`
-  - `brand_config_ontology_category`
-  - `brand_config_ontology_metadata`
-  - `brand_config_ontology_variant`
+    - `brand_config_amazon_asin`
+    - `brand_config_amazon_attributes`
+    - `brand_config_amazon_family`
+    - `brand_config_business_attributes`
+    - `brand_config_ontology_category`
+    - `brand_config_ontology_metadata`
+    - `brand_config_ontology_variant`
 
 This split is a compile-time check, nothing more. The enforceable
 boundary is the grants held by the database role in your connection
@@ -159,12 +190,16 @@ query says which of them you actually have (`pool` is the third thing
 ```ts
 import { TABLE_NAMES, VIEW_NAMES } from "@databrill/core-pg-kysely/contract";
 
-const { rows } = await pool.query(
-	"select table_name from information_schema.tables where table_schema = $1",
-	["w123456789"],
+const { rows } = await Effect.runPromise(
+	pool.query(
+		"select table_name from information_schema.tables where table_schema = $1",
+		["w123456789"],
+	),
 );
 const present = new Set(rows.map((row) => String(row.table_name)));
-const missing = [...TABLE_NAMES, ...VIEW_NAMES].filter((name) => !present.has(name));
+const missing = [...TABLE_NAMES, ...VIEW_NAMES].filter(
+	(name) => !present.has(name),
+);
 ```
 
 `information_schema.tables` lists views alongside tables (a view has
@@ -211,7 +246,7 @@ libpq's meanings, which are not the ones `pg` gives it — see "TLS and
 Values come back as `Temporal` objects, so the runtime needs `Temporal`.
 Newer runtimes have it built in; check yours with
 `typeof globalThis.Temporal`. Where it is missing, load a polyfill before
-connecting, `import "temporal-polyfill/global"`, or `createDb()` throws a
+connecting, `import "temporal-polyfill/global"`, or executing `createDb()` fails with a
 clear error explaining exactly that at connection time rather than a bare
 `ReferenceError` on your first row read.
 
@@ -339,19 +374,19 @@ certificate chain` against a pooler — Supabase's among them — whose chain
 does not verify against the public root store. Through `createDb()`,
 `require` means what libpq means: encrypted, not verified.
 
-| `sslmode` | What you get |
-| --- | --- |
-| `verify-full` | The chain and the hostname are both verified. |
-| `verify-ca` | An error: it needs a CA, and a CA can only arrive through `ssl` — see below. |
-| `require`, `prefer` | Encrypted, not verified. |
-| `allow` | The same: encrypted, not verified. |
-| `disable` | No TLS. |
-| anything else | An error naming the valid modes. |
+| `sslmode`           | What you get                                                                 |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `verify-full`       | The chain and the hostname are both verified.                                |
+| `verify-ca`         | An error: it needs a CA, and a CA can only arrive through `ssl` — see below. |
+| `require`, `prefer` | Encrypted, not verified.                                                     |
+| `allow`             | The same: encrypted, not verified.                                           |
+| `disable`           | No TLS.                                                                      |
+| anything else       | An error naming the valid modes.                                             |
 
 Modes are matched exactly, so `sslmode=Require` is an error rather than
 something silently different from what you wrote.
 
-`verify-ca` **requires a CA and throws without one**. Verifying a chain
+`verify-ca` requires a CA and fails without one. Verifying a chain
 against the public root store and skipping the hostname check accepts any
 publicly-trusted certificate for any hostname, which is not a check at
 all. Pass the certificate contents as `ssl: { ca }`. Note that an
@@ -396,7 +431,7 @@ certificate contents as `ssl: { ca }` instead.
 
 Be aware of what "left for `pg` to handle" means, because it is not
 "ignored". `pg` reads those three files itself, synchronously, while it
-parses the connection string inside `new Pool()` — so `createDb()` throws
+parses the connection string inside `new Pool()` — so executing `createDb()` fails with
 `ENOENT` right there if the path is wrong, rather than failing later on
 connect, and under Deno the read needs `--allow-read` from you even
 though the code doing it is not ours.
@@ -426,20 +461,20 @@ the connection is pooled.
 
 ## The pool
 
-`createDb()` also returns `pool`, the connection pool both surfaces
+Calling `createDb()` also provides `pool`, an Effect interface to the connection pool both surfaces
 share, for connection metrics and for SQL this package cannot express:
 
 ```ts
-const { db, pool, destroy } = createDb(/* ... */);
+const { db, pool, destroy } = Either.getOrThrow(createDb(connectionString));
 
 console.log(pool.totalCount, pool.idleCount, pool.waitingCount);
-const { rows } = await pool.query("select now() as at");
+const { rows } = await Effect.runPromise(pool.query("select now() as at"));
 
 // Your own listener for errors on idle clients; it does not displace
 // the one this package attaches.
 pool.on("error", (error) => console.warn(error));
 
-await destroy();
+await Effect.runPromise(destroy());
 ```
 
 It is typed as `TenantPool`, a type this package declares rather than
@@ -456,7 +491,7 @@ there is one pool, so there is one teardown. If you need a member
 
 `checkSchemaCompatibility(db)` compares the schema contract this package
 was generated against with the version recorded in the connected
-database, and returns a result rather than throwing:
+database, and returns an Effect with the following successful domain results:
 
 - `ok` — versions match.
 - `warning` — additive skew. Your existing queries are unaffected either
@@ -464,9 +499,8 @@ database, and returns a result rather than throwing:
   yet.
 - `error` — breaking skew. Queries the types permit may fail at runtime,
   or read the wrong thing.
-- `unknown` — the database records no version, or the row could not be
-  read (for example on a permissions error). Not an assertion in either
-  direction.
+- `unknown` — the version table or row is absent, or the version cannot be compared.
+  Permission and connection failures use the typed error channel.
 
 Minor skew warns instead of throwing on purpose. Tenant databases are
 migrated fleet-wide before a matching package version is published, so

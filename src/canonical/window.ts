@@ -1,3 +1,6 @@
+import { Either } from "effect";
+import { tryOrOperationError } from "../tryOrOperationError.ts";
+
 /** An explicit inclusive date range, or a trailing number of inclusive days. */
 export type CanonicalWindow =
 	| { readonly kind: "explicit"; readonly dateFirst: string; readonly dateLast: string }
@@ -19,11 +22,13 @@ export interface CanonicalResolvedWindow {
 export function resolveCanonicalWindow(
 	requested: CanonicalWindow,
 	anchorDate: string,
-): CanonicalResolvedWindow {
-	if (requested.kind === "explicit") {
-		return { dateFirst: requested.dateFirst, dateLast: requested.dateLast, anchoredOn: "explicit" };
-	}
-	const last = Temporal.PlainDate.from(anchorDate);
-	const first = last.subtract({ days: Math.max(requested.days - 1, 0) });
-	return { dateFirst: first.toString(), dateLast: last.toString(), anchoredOn: "maxDefinitiveDate" };
+): Either.Either<CanonicalResolvedWindow, Error> {
+	return tryOrOperationError(() => {
+		if (requested.kind === "explicit") {
+			return { dateFirst: requested.dateFirst, dateLast: requested.dateLast, anchoredOn: "explicit" };
+		}
+		const last = Temporal.PlainDate.from(anchorDate);
+		const first = last.subtract({ days: Math.max(requested.days - 1, 0) });
+		return { dateFirst: first.toString(), dateLast: last.toString(), anchoredOn: "maxDefinitiveDate" };
+	});
 }

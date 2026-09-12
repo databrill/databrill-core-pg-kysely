@@ -1,3 +1,4 @@
+import { Either } from "effect";
 /** Compiled-SQL rules for the canonical AmazonOrders reader. No database. */
 
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.19";
@@ -28,7 +29,7 @@ function paramsFor(
 }
 
 Deno.test("AmazonOrders compile - settled line predicate and default Non-Amazon exclusion", () => {
-	const compiled = compileOrdersLevelQuery(db, paramsFor("SKU"));
+	const compiled = Either.getOrThrow(compileOrdersLevelQuery(db, paramsFor("SKU")));
 	assertStringIncludes(compiled.sql, `COALESCE("o"."order_status", '') <> 'Cancelled'`);
 	assertStringIncludes(compiled.sql, `COALESCE("o"."item_status", '') <> 'Cancelled'`);
 	assertStringIncludes(compiled.sql, `"o"."asin" is not null`);
@@ -37,7 +38,7 @@ Deno.test("AmazonOrders compile - settled line predicate and default Non-Amazon 
 	assert(!compiled.sql.includes("quantity_shipped"));
 	assert(!compiled.sql.includes("quantity_unshipped"));
 
-	const included = compileOrdersLevelQuery(
+	const included = Either.getOrThrow(compileOrdersLevelQuery(
 		db,
 		paramsFor("SKU", {
 			request: {
@@ -47,12 +48,12 @@ Deno.test("AmazonOrders compile - settled line predicate and default Non-Amazon 
 				includeNonAmazonSalesChannels: true,
 			},
 		}),
-	);
+	));
 	assert(!included.sql.includes("Non-Amazon%"));
 });
 
 Deno.test("AmazonOrders compile - parent ASIN maps through marketplace code", () => {
-	const parent = compileOrdersLevelQuery(db, paramsFor("PARENT_ASIN"));
+	const parent = Either.getOrThrow(compileOrdersLevelQuery(db, paramsFor("PARENT_ASIN")));
 	assertStringIncludes(parent.sql, `inner join "amazon_marketplace" as "m"`);
 	assertStringIncludes(parent.sql, `left join "amzspapi_catalog_items_v20220401__catalogitem" as "c"`);
 	assertStringIncludes(parent.sql, `"c"."marketplace_code" = "m"."marketplace_code"`);
@@ -60,14 +61,14 @@ Deno.test("AmazonOrders compile - parent ASIN maps through marketplace code", ()
 	assertStringIncludes(parent.sql, `as "marketplaceId"`);
 	assertStringIncludes(parent.sql, `as "parentAsin"`);
 
-	const asin = compileOrdersLevelQuery(db, paramsFor("ASIN"));
+	const asin = Either.getOrThrow(compileOrdersLevelQuery(db, paramsFor("ASIN")));
 	assert(!asin.sql.includes("amzspapi_catalog_items_v20220401__catalogitem"));
 	assert(!asin.sql.includes(`as "marketplaceId"`));
 });
 
 Deno.test("AmazonOrders compile - distinct order count is recomputed at the requested grouping", () => {
 	for (const level of ["SUM", "STORE", "ASIN", "SKU"] as const) {
-		const compiled = compileOrdersLevelQuery(db, paramsFor(level));
+		const compiled = Either.getOrThrow(compileOrdersLevelQuery(db, paramsFor(level)));
 		assertStringIncludes(
 			compiled.sql,
 			`COUNT(DISTINCT ("o"."merchant_id", "o"."amazon_order_id"))::float8 as "orders"`,
@@ -76,7 +77,7 @@ Deno.test("AmazonOrders compile - distinct order count is recomputed at the requ
 });
 
 Deno.test("AmazonOrders compile - daily ECB conversion prefers previous then future", () => {
-	const compiled = compileOrdersLevelQuery(
+	const compiled = Either.getOrThrow(compileOrdersLevelQuery(
 		db,
 		paramsFor("SUM", {
 			request: {
@@ -86,7 +87,7 @@ Deno.test("AmazonOrders compile - daily ECB conversion prefers previous then fut
 				targetCurrency: "GBP",
 			},
 		}),
-	);
+	));
 	assertStringIncludes(compiled.sql, `left join lateral`);
 	assertStringIncludes(compiled.sql, `"fromFxRows"."timeFormat" = `);
 	assertStringIncludes(compiled.sql, `"fromFxRows"."period" <= "o"."localdate"::text`);
@@ -109,22 +110,22 @@ Deno.test("AmazonOrders compile - currency is a key only for money projections",
 	const units = offered.filter((measure) => measure.name === "units");
 	const money = offered.filter((measure) => measure.name === "extendedPrice");
 
-	const unitsOnly = compileOrdersLevelQuery(
+	const unitsOnly = Either.getOrThrow(compileOrdersLevelQuery(
 		db,
 		paramsFor("ASIN", {
 			keyColumns: keyColumnsForMeasures(spec, units),
 			measures: units,
 		}),
-	);
+	));
 	assertEquals(unitsOnly.sql.includes(`as "currency"`), false);
 
-	const withMoney = compileOrdersLevelQuery(
+	const withMoney = Either.getOrThrow(compileOrdersLevelQuery(
 		db,
 		paramsFor("ASIN", {
 			keyColumns: keyColumnsForMeasures(spec, money),
 			measures: money,
 		}),
-	);
+	));
 	assertStringIncludes(withMoney.sql, `as "currency"`);
 });
 
@@ -140,7 +141,7 @@ Deno.test("AmazonOrders compile - freshness caps the latest observed date after 
 });
 
 Deno.test("AmazonOrders compile - every caller value is bound", () => {
-	const compiled = compileOrdersLevelQuery(
+	const compiled = Either.getOrThrow(compileOrdersLevelQuery(
 		db,
 		paramsFor("FAMILY", {
 			request: {
@@ -153,7 +154,7 @@ Deno.test("AmazonOrders compile - every caller value is bound", () => {
 			},
 			stores: [{ merchantId: "M-1", marketplaceId: "MP-1" }],
 		}),
-	);
+	));
 	assert(compiled.parameters.includes("DE'; DROP TABLE x; --"));
 	assert(compiled.parameters.includes("widgets'; DROP TABLE y; --"));
 	assert(compiled.parameters.includes("M-1"));

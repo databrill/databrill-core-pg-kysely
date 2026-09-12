@@ -1,6 +1,7 @@
+import { Effect, Either } from "effect";
 import { type AliasedRawBuilder, type CompiledQuery, type Expression, type Kysely, type RawBuilder, sql } from "kysely";
+import { tryOrOperationError } from "../../tryOrOperationError.ts";
 import type { DB } from "../../types.ts";
-import { type CanonicalQueryRunner, executeCompiled } from "../execute.ts";
 import {
 	type CanonicalCaveat,
 	type CanonicalLevel,
@@ -12,6 +13,7 @@ import {
 	levelSpec,
 	measuresForLevel,
 } from "../declaration.ts";
+import { type CanonicalQueryRunner, executeCompiled } from "../execute.ts";
 import {
 	readFreshness,
 	skuByDayFreshnessQuery,
@@ -95,118 +97,126 @@ const UNMAPPED_FAMILY = "(unmapped)";
  * `runner` is the caller's postgres.js connection, already pinned to the
  * workspace schema and configured with `makePostgresJsTypes()`.
  */
-export async function readAmazonReportSalesAndTraffic(
+export function readAmazonReportSalesAndTraffic(
 	db: Kysely<DB>,
 	runner: CanonicalQueryRunner,
 	request: AmazonReportSalesAndTrafficRequest,
-): Promise<AmazonReportSalesAndTrafficResult> {
-	const spec = levelSpec(AMAZON_REPORT_SALES_AND_TRAFFIC, request.level);
-	if (spec === undefined) {
-		throw new Error(
-			`AmazonReport_SALES_AND_TRAFFIC does not offer the level ${request.level}. Offered: ${
-				AMAZON_REPORT_SALES_AND_TRAFFIC.levels.map((entry) => entry.level).join(", ")
-			}`,
-		);
-	}
-	const source = AMAZON_REPORT_SALES_AND_TRAFFIC.sources.find((candidate) => candidate.key === spec.source);
-	if (source === undefined || source.role !== "FACT") {
-		throw new Error(
-			`AmazonReport_SALES_AND_TRAFFIC level ${request.level} names an undeclared source ${spec.source}`,
-		);
-	}
-	if (source.sourceGrainLevel === undefined) {
-		throw new Error(
-			`AmazonReport_SALES_AND_TRAFFIC fact source ${source.key} does not declare its source-grain level`,
-		);
-	}
+): Effect.Effect<AmazonReportSalesAndTrafficResult, Error> {
+	return Effect.gen(function* () {
+		const spec = levelSpec(AMAZON_REPORT_SALES_AND_TRAFFIC, request.level);
+		if (spec === undefined) {
+			return yield* Effect.fail(
+				new Error(
+					`AmazonReport_SALES_AND_TRAFFIC does not offer the level ${request.level}. Offered: ${
+						AMAZON_REPORT_SALES_AND_TRAFFIC.levels.map((entry) => entry.level).join(", ")
+					}`,
+				),
+			);
+		}
+		const source = AMAZON_REPORT_SALES_AND_TRAFFIC.sources.find((candidate) => candidate.key === spec.source);
+		if (source === undefined || source.role !== "FACT") {
+			return yield* Effect.fail(
+				new Error(
+					`AmazonReport_SALES_AND_TRAFFIC level ${request.level} names an undeclared source ${spec.source}`,
+				),
+			);
+		}
+		if (source.sourceGrainLevel === undefined) {
+			return yield* Effect.fail(
+				new Error(
+					`AmazonReport_SALES_AND_TRAFFIC fact source ${source.key} does not declare its source-grain level`,
+				),
+			);
+		}
 
-	const stores = request.stores ?? [];
-	const caveats = caveatsForLevel(AMAZON_REPORT_SALES_AND_TRAFFIC, request.level);
-	const empty = {
-		declaration: AMAZON_REPORT_SALES_AND_TRAFFIC.name,
-		level: request.level,
-		timeGranularity: request.timeGranularity,
-		caveats,
-		rows: [],
-	} as const;
+		const stores = request.stores ?? [];
+		const caveats = caveatsForLevel(AMAZON_REPORT_SALES_AND_TRAFFIC, request.level);
+		const empty = {
+			declaration: AMAZON_REPORT_SALES_AND_TRAFFIC.name,
+			level: request.level,
+			timeGranularity: request.timeGranularity,
+			caveats,
+			rows: [],
+		} as const;
 
-	// Relations first: a missing one is an answer, not an exception.
-	const needed = AMAZON_REPORT_SALES_AND_TRAFFIC.sources
-		.filter((candidate) =>
-			candidate.requiredByLevels.includes(request.level) ||
-			(candidate.key === "familyOntology" && (request.families ?? []).length > 0)
-		)
-		.map((candidate) => candidate.relation);
-	const present = await probeRelations(db, runner, needed);
-	const missing = needed.filter((relation) => !present.has(relation));
-	if (missing.length > 0) {
-		return {
-			...empty,
-			window: null,
-			measures: [],
-			freshness: null,
-			unavailable: missing.map((relation) => ({
-				level: request.level,
-				source: spec.source,
-				relation,
-				reason: AMAZON_REPORT_SALES_AND_TRAFFIC.sources.find((candidate) =>
-					candidate.relation === relation
-				)?.whenAbsent ??
-					`The relation ${relation} is not present on this database.`,
-			})),
-		};
-	}
+		// Relations first: a missing one is an answer, not an exception.
+		const needed = AMAZON_REPORT_SALES_AND_TRAFFIC.sources
+			.filter((candidate) =>
+				candidate.requiredByLevels.includes(request.level) ||
+				(candidate.key === "familyOntology" && (request.families ?? []).length > 0)
+			)
+			.map((candidate) => candidate.relation);
+		const present = yield* probeRelations(db, runner, needed);
+		const missing = needed.filter((relation) => !present.has(relation));
+		if (missing.length > 0) {
+			return {
+				...empty,
+				window: null,
+				measures: [],
+				freshness: null,
+				unavailable: missing.map((relation) => ({
+					level: request.level,
+					source: spec.source,
+					relation,
+					reason: AMAZON_REPORT_SALES_AND_TRAFFIC.sources.find((candidate) =>
+						candidate.relation === relation
+					)?.whenAbsent ??
+						`The relation ${relation} is not present on this database.`,
+				})),
+			};
+		}
 
-	const freshness = spec.source === "store"
-		? await readFreshness(db, runner, {
-			source: source.key,
-			relation: source.relation,
-			rule: "Latest date whose storefront session total reaches half the median of the store's 14 most " +
-				"recent present dates. A row count would prove nothing here: this relation publishes exactly " +
-				"one row per day whether or not Amazon has filled it in.",
-			query: storeFreshnessQuery(stores),
-		})
-		: await readFreshness(db, runner, {
-			source: source.key,
-			relation: source.relation,
-			rule: "Latest date whose row count reaches half the median of the store's 14 most recent present " +
-				"dates. The failure mode is a placeholder day with a handful of rows, which a row-count floor " +
-				"catches and a fixed lag does not.",
-			query: skuByDayFreshnessQuery(stores),
+		const freshness = spec.source === "store"
+			? yield* readFreshness(db, runner, {
+				source: source.key,
+				relation: source.relation,
+				rule: "Latest date whose storefront session total reaches half the median of the store's 14 most " +
+					"recent present dates. A row count would prove nothing here: this relation publishes exactly " +
+					"one row per day whether or not Amazon has filled it in.",
+				query: storeFreshnessQuery(stores),
+			})
+			: yield* readFreshness(db, runner, {
+				source: source.key,
+				relation: source.relation,
+				rule: "Latest date whose row count reaches half the median of the store's 14 most recent present " +
+					"dates. The failure mode is a placeholder day with a handful of rows, which a row-count floor " +
+					"catches and a fixed lag does not.",
+				query: skuByDayFreshnessQuery(stores),
+			});
+
+		// A store-level report that Amazon does not publish for this seller looks
+		// exactly like this: the relation exists and holds no usable date. The levels
+		// it serves are omitted rather than filled from the SKU sum, which would be a
+		// number Amazon does not publish and which is knowably too high.
+		if (freshness.anchorDate === null) {
+			return {
+				...empty,
+				window: null,
+				measures: [],
+				freshness,
+				unavailable: [{
+					level: request.level,
+					source: spec.source,
+					relation: source.relation,
+					reason: `${source.whenAbsent} No date in ${source.relation} passes the completeness rule for the ` +
+						`stores in scope, so there is no window this level can be answered over.`,
+				}],
+			};
+		}
+
+		const window = yield* resolveCanonicalWindow(request.window, freshness.anchorDate);
+		const measures = yield* selectMeasures(request, source.sourceGrainLevel);
+		const rows = yield* runLevelQuery(db, runner, {
+			request,
+			keyColumns: keyColumnsForMeasures(spec, measures),
+			sourceKey: spec.source,
+			stores,
+			window,
+			measures,
 		});
 
-	// A store-level report that Amazon does not publish for this seller looks
-	// exactly like this: the relation exists and holds no usable date. The levels
-	// it serves are omitted rather than filled from the SKU sum, which would be a
-	// number Amazon does not publish and which is knowably too high.
-	if (freshness.anchorDate === null) {
-		return {
-			...empty,
-			window: null,
-			measures: [],
-			freshness,
-			unavailable: [{
-				level: request.level,
-				source: spec.source,
-				relation: source.relation,
-				reason: `${source.whenAbsent} No date in ${source.relation} passes the completeness rule for the ` +
-					`stores in scope, so there is no window this level can be answered over.`,
-			}],
-		};
-	}
-
-	const window = resolveCanonicalWindow(request.window, freshness.anchorDate);
-	const measures = selectMeasures(request, source.sourceGrainLevel);
-	const rows = await runLevelQuery(db, runner, {
-		request,
-		keyColumns: keyColumnsForMeasures(spec, measures),
-		sourceKey: spec.source,
-		stores,
-		window,
-		measures,
+		return { ...empty, window, measures, freshness, unavailable: [], rows };
 	});
-
-	return { ...empty, window, measures, freshness, unavailable: [], rows };
 }
 
 /**
@@ -222,34 +232,38 @@ export async function readAmazonReportSalesAndTraffic(
 function selectMeasures(
 	request: AmazonReportSalesAndTrafficRequest,
 	sourceGrainLevel: CanonicalLevel,
-): readonly CanonicalMeasure[] {
-	const atSourceGrain = request.level === sourceGrainLevel && request.timeGranularity === "DAY";
-	const offered = measuresForLevel(AMAZON_REPORT_SALES_AND_TRAFFIC, request.level)
-		.filter((measure) => measure.additivity.kind !== "NON_ADDITIVE" || atSourceGrain);
+): Either.Either<readonly CanonicalMeasure[], Error> {
+	return Either.gen(function* () {
+		const atSourceGrain = request.level === sourceGrainLevel && request.timeGranularity === "DAY";
+		const offered = measuresForLevel(AMAZON_REPORT_SALES_AND_TRAFFIC, request.level)
+			.filter((measure) => measure.additivity.kind !== "NON_ADDITIVE" || atSourceGrain);
 
-	const asked = request.measures;
-	if (asked === undefined) {
-		return offered;
-	}
-	const unknown = asked.filter((name) => !offered.some((measure) => measure.name === name));
-	if (unknown.length > 0) {
-		throw new Error(
-			`AmazonReport_SALES_AND_TRAFFIC does not offer ${unknown.join(", ")} at level ${request.level} / ` +
-				`${request.timeGranularity}. Offered: ${offered.map((measure) => measure.name).join(", ")}`,
-		);
-	}
-	// A ratio is recomputed from its numerator and denominator at the output
-	// grain, so both have to be computed even when the caller wanted only the
-	// ratio. Averaging the source rows' ratios instead is the wrong answer that
-	// looks right.
-	const wanted = new Set(asked);
-	for (const measure of offered) {
-		if (wanted.has(measure.name) && measure.additivity.kind === "RATIO") {
-			wanted.add(measure.additivity.numerator);
-			wanted.add(measure.additivity.denominator);
+		const asked = request.measures;
+		if (asked === undefined) {
+			return offered;
 		}
-	}
-	return offered.filter((measure) => wanted.has(measure.name));
+		const unknown = asked.filter((name) => !offered.some((measure) => measure.name === name));
+		if (unknown.length > 0) {
+			return yield* Either.left(
+				new Error(
+					`AmazonReport_SALES_AND_TRAFFIC does not offer ${unknown.join(", ")} at level ${request.level} / ` +
+						`${request.timeGranularity}. Offered: ${offered.map((measure) => measure.name).join(", ")}`,
+				),
+			);
+		}
+		// A ratio is recomputed from its numerator and denominator at the output
+		// grain, so both have to be computed even when the caller wanted only the
+		// ratio. Averaging the source rows' ratios instead is the wrong answer that
+		// looks right.
+		const wanted = new Set(asked);
+		for (const measure of offered) {
+			if (wanted.has(measure.name) && measure.additivity.kind === "RATIO") {
+				wanted.add(measure.additivity.numerator);
+				wanted.add(measure.additivity.denominator);
+			}
+		}
+		return offered.filter((measure) => wanted.has(measure.name));
+	});
 }
 
 /**
@@ -273,40 +287,46 @@ export interface LevelQueryParams {
 /** The database value of one selected column, before it is sorted into key or measure. */
 export type CellValue = string | number | null;
 
-async function runLevelQuery(
+function runLevelQuery(
 	db: Kysely<DB>,
 	runner: CanonicalQueryRunner,
 	params: LevelQueryParams,
-): Promise<readonly AmazonReportSalesAndTrafficRow[]> {
-	const rows = await executeCompiled(runner, compileLevelQuery(db, params));
-	return Array.from(rows, (row) => buildRow(row, params.keyColumns, params.measures));
+): Effect.Effect<readonly AmazonReportSalesAndTrafficRow[], Error> {
+	return Effect.gen(function* () {
+		const rows = yield* executeCompiled(runner, yield* compileLevelQuery(db, params));
+		return Array.from(rows, (row) => buildRow(row, params.keyColumns, params.measures));
+	});
 }
 
 /** Build and compile the level query, without executing it. */
 export function compileLevelQuery(
 	db: Kysely<DB>,
 	params: LevelQueryParams,
-): CompiledQuery<Record<string, CellValue>> {
-	const { request, keyColumns, measures } = params;
-	const bucket = timeBucket(request.timeGranularity, params.window);
-	const keyExpressions = keyColumns.map((column) => keyExpression(params.sourceKey, column));
+): Either.Either<CompiledQuery<Record<string, CellValue>>, Error> {
+	return Either.gen(function* () {
+		const { request, keyColumns, measures } = params;
+		const keyExpressions = yield* Either.all(keyColumns.map((column) => keyExpression(params.sourceKey, column)));
+		return yield* tryOrOperationError(() => {
+			const bucket = timeBucket(request.timeGranularity, params.window);
 
-	const selections: AliasedRawBuilder<CellValue, string>[] = [
-		sql<CellValue>`${bucket.label}`.as("period"),
-		...keyColumns.map((column, index) => sql<CellValue>`${keyExpressions[index] ?? sql`NULL`}`.as(column)),
-		...measures
-			.filter((measure) => measure.additivity.kind !== "RATIO")
-			.map((measure) => sql<CellValue>`${aggregate(params.sourceKey, measure)}`.as(measure.name)),
-	];
-	const grouping = [...(bucket.groupBy === null ? [] : [bucket.groupBy]), ...keyExpressions];
+			const selections: AliasedRawBuilder<CellValue, string>[] = [
+				sql<CellValue>`${bucket.label}`.as("period"),
+				...keyColumns.map((column, index) => sql<CellValue>`${keyExpressions[index] ?? sql`NULL`}`.as(column)),
+				...measures
+					.filter((measure) => measure.additivity.kind !== "RATIO")
+					.map((measure) => sql<CellValue>`${aggregate(params.sourceKey, measure)}`.as(measure.name)),
+			];
+			const grouping = [...(bucket.groupBy === null ? [] : [bucket.groupBy]), ...keyExpressions];
 
-	// The two branches are spelled out rather than shared, because each carries
-	// its own relation types through `select`/`groupBy` and that is precisely the
-	// checking Kysely is here for: a renamed column on either relation is a
-	// compile error at the `selectFrom`/`innerJoin` above.
-	return params.sourceKey === "store"
-		? withGrouping(storeQuery(db, params).select(selections), grouping).compile()
-		: withGrouping(skuByDayQuery(db, params).select(selections), grouping).compile();
+			// The two branches are spelled out rather than shared, because each carries
+			// its own relation types through `select`/`groupBy` and that is precisely the
+			// checking Kysely is here for: a renamed column on either relation is a
+			// compile error at the `selectFrom`/`innerJoin` above.
+			return params.sourceKey === "store"
+				? withGrouping(storeQuery(db, params).select(selections), grouping).compile()
+				: withGrouping(skuByDayQuery(db, params).select(selections), grouping).compile();
+		});
+	});
 }
 
 /**
@@ -413,36 +433,42 @@ function timeBucket(
  * because Amazon assigns a different parent per marketplace, and `ASIN` selects
  * no marketplace at all because the same ASIN is the same product everywhere.
  */
-function keyExpression(sourceKey: string, column: string): RawBuilder<unknown> {
-	if (column === "currency") {
-		return currencyExpression();
-	}
-	if (sourceKey === "store") {
+function keyExpression(sourceKey: string, column: string): Either.Either<RawBuilder<unknown>, Error> {
+	return Either.gen(function* () {
+		if (column === "currency") {
+			return currencyExpression();
+		}
+		if (sourceKey === "store") {
+			switch (column) {
+				case "merchantId":
+					return sql`${sql.ref("t.merchantId")}`;
+				case "marketplaceId":
+					return sql`${sql.ref("t.marketplaceId")}`;
+				case "countryCode":
+					return sql`${sql.ref("s.countryCode")}`;
+			}
+			return yield* Either.left(
+				new Error(`AmazonReport_SALES_AND_TRAFFIC store levels do not know the key column ${column}`),
+			);
+		}
 		switch (column) {
 			case "merchantId":
 				return sql`${sql.ref("t.merchantId")}`;
 			case "marketplaceId":
 				return sql`${sql.ref("t.marketplaceId")}`;
-			case "countryCode":
-				return sql`${sql.ref("s.countryCode")}`;
+			case "sku":
+				return sql`${sql.ref("t.sku")}`;
+			case "asin":
+				return sql`${sql.ref("t.childAsin")}`;
+			case "parentAsin":
+				return sql`${sql.ref("t.parentAsin")}`;
+			case "family":
+				return familyExpression();
 		}
-		throw new Error(`AmazonReport_SALES_AND_TRAFFIC store levels do not know the key column ${column}`);
-	}
-	switch (column) {
-		case "merchantId":
-			return sql`${sql.ref("t.merchantId")}`;
-		case "marketplaceId":
-			return sql`${sql.ref("t.marketplaceId")}`;
-		case "sku":
-			return sql`${sql.ref("t.sku")}`;
-		case "asin":
-			return sql`${sql.ref("t.childAsin")}`;
-		case "parentAsin":
-			return sql`${sql.ref("t.parentAsin")}`;
-		case "family":
-			return familyExpression();
-	}
-	throw new Error(`AmazonReport_SALES_AND_TRAFFIC product levels do not know the key column ${column}`);
+		return yield* Either.left(
+			new Error(`AmazonReport_SALES_AND_TRAFFIC product levels do not know the key column ${column}`),
+		);
+	});
 }
 
 /**
@@ -520,15 +546,15 @@ function skuByDayQuery(db: Kysely<DB>, params: LevelQueryParams) {
 		.$if(params.stores.length > 0, (qb) => qb.where(storePairs(params.stores, "t.merchantId", "t.marketplaceId")))
 		.$if(
 			(params.request.countryCodes ?? []).length > 0,
-			(qb) => qb.where(inList(sql.ref("s.countryCode"), params.request.countryCodes ?? [])),
+			(qb) => qb.where("s.countryCode", "in", params.request.countryCodes ?? []),
 		)
 		.$if(
 			(params.request.asins ?? []).length > 0,
-			(qb) => qb.where(inList(sql.ref("t.childAsin"), params.request.asins ?? [])),
+			(qb) => qb.where("t.childAsin", "in", params.request.asins ?? []),
 		)
 		.$if(
 			(params.request.families ?? []).length > 0,
-			(qb) => qb.where(inList(familyExpression(), params.request.families ?? [])),
+			(qb) => qb.where(familyExpression(), "in", params.request.families ?? []),
 		);
 	return base;
 }
@@ -555,7 +581,7 @@ function storeQuery(db: Kysely<DB>, params: LevelQueryParams) {
 		.$if(params.stores.length > 0, (qb) => qb.where(storePairs(params.stores, "t.merchantId", "t.marketplaceId")))
 		.$if(
 			(params.request.countryCodes ?? []).length > 0,
-			(qb) => qb.where(inList(sql.ref("s.countryCode"), params.request.countryCodes ?? [])),
+			(qb) => qb.where("s.countryCode", "in", params.request.countryCodes ?? []),
 		);
 }
 
@@ -577,6 +603,3 @@ function storePairs(
 }
 
 /** `expr IN (...)` with every value bound. */
-function inList(expression: RawBuilder<unknown>, values: readonly string[]): Expression<boolean> {
-	return sql<boolean>`${expression} IN (${sql.join(values.map((value) => sql`${value}`))})`;
-}

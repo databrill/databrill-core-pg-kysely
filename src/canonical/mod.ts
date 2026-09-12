@@ -13,12 +13,12 @@
  * postgres.js connection the caller already owns. Nothing here opens a
  * connection, migrates a tenant database, or creates a relation.
  *
- * This entry point depends on `kysely` and this package's own modules and
- * nothing else. In particular it does NOT pull in `pg`, so `services/` and
+ * This entry point depends on `kysely`, Effect, and this package's own modules. In particular it does NOT pull in `pg`, so `services/` and
  * `mcp-local`, which connect with postgres.js, can import it without acquiring
  * a second driver.
  *
  * ```ts
+ * import { Effect } from "effect";
  * import postgres from "postgres";
  * import {
  * 	AMAZON_REPORT_SALES_AND_TRAFFIC,
@@ -30,11 +30,11 @@
  * const sql = postgres(uri, { types: makePostgresJsTypes() });
  * const db = createCanonicalQueryBuilder();
  *
- * const result = await readAmazonReportSalesAndTraffic(db, sql, {
+ * const result = await Effect.runPromise(readAmazonReportSalesAndTraffic(db, sql, {
  * 	level: "ASIN",
  * 	timeGranularity: "DAY",
  * 	window: { kind: "trailingDays", days: 7 },
- * });
+ * }));
  * // result.window.dateLast is the source's own maxDefinitiveDate, not MAX(date).
  * ```
  *

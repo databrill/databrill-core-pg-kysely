@@ -1,3 +1,6 @@
+import { Either } from "effect";
+import { tryOrOperationError } from "./tryOrOperationError.ts";
+
 /**
  * Conversion between PostgreSQL date/time text and Temporal values.
  *
@@ -47,30 +50,29 @@ export class UnrepresentableTemporalValueError extends Error {
 }
 
 /** `timestamptz` — an exact instant. */
-export function parseInstant(value: string): Temporal.Instant {
-	try {
-		return Temporal.Instant.from(value);
-	} catch (cause) {
-		throw new UnrepresentableTemporalValueError(value, "Temporal.Instant", cause);
-	}
+export function parseInstant(value: string): Either.Either<Temporal.Instant, UnrepresentableTemporalValueError> {
+	return Either.try({
+		try: () => Temporal.Instant.from(value),
+		catch: (cause) => new UnrepresentableTemporalValueError(value, "Temporal.Instant", cause),
+	});
 }
 
 /** `timestamp without time zone` — a wall-clock reading, deliberately zone-free. */
-export function parsePlainDateTime(value: string): Temporal.PlainDateTime {
-	try {
-		return Temporal.PlainDateTime.from(value);
-	} catch (cause) {
-		throw new UnrepresentableTemporalValueError(value, "Temporal.PlainDateTime", cause);
-	}
+export function parsePlainDateTime(
+	value: string,
+): Either.Either<Temporal.PlainDateTime, UnrepresentableTemporalValueError> {
+	return Either.try({
+		try: () => Temporal.PlainDateTime.from(value),
+		catch: (cause) => new UnrepresentableTemporalValueError(value, "Temporal.PlainDateTime", cause),
+	});
 }
 
 /** `date` — a calendar day with no time and no zone. */
-export function parsePlainDate(value: string): Temporal.PlainDate {
-	try {
-		return Temporal.PlainDate.from(value);
-	} catch (cause) {
-		throw new UnrepresentableTemporalValueError(value, "Temporal.PlainDate", cause);
-	}
+export function parsePlainDate(value: string): Either.Either<Temporal.PlainDate, UnrepresentableTemporalValueError> {
+	return Either.try({
+		try: () => Temporal.PlainDate.from(value),
+		catch: (cause) => new UnrepresentableTemporalValueError(value, "Temporal.PlainDate", cause),
+	});
 }
 
 /**
@@ -82,8 +84,10 @@ export function parsePlainDate(value: string): Temporal.PlainDate {
  * package has never heard of — none of which an `instanceof` chain against the
  * current global would catch.
  */
-export function isTemporalValue(value: unknown): boolean {
-	return Object.prototype.toString.call(value).startsWith("[object Temporal.");
+export function isTemporalValue(value: unknown): Either.Either<boolean, Error> {
+	return tryOrOperationError(() => {
+		return Object.prototype.toString.call(value).startsWith("[object Temporal.");
+	});
 }
 
 /**
@@ -105,14 +109,16 @@ export function isTemporalValue(value: unknown): boolean {
  * offset preceding it already fixes the instant exactly, which makes this a
  * lossless narrowing to what the column can hold.
  */
-export function temporalToPostgres(value: unknown): unknown {
-	if (Array.isArray(value)) {
-		return value.map(temporalToPostgres);
-	}
-	if (!isTemporalValue(value)) {
-		return value;
-	}
-	return stripZoneAnnotation(String(value));
+export function temporalToPostgres(value: unknown): Either.Either<unknown, Error> {
+	return Either.gen(function* () {
+		if (Array.isArray(value)) {
+			return yield* Either.all(value.map(temporalToPostgres));
+		}
+		if (!(yield* isTemporalValue(value))) {
+			return value;
+		}
+		return yield* tryOrOperationError(() => stripZoneAnnotation(String(value)));
+	});
 }
 
 /** `2026-08-10T21:18:27+02:00[Europe/Berlin]` becomes `2026-08-10T21:18:27+02:00`. */
@@ -128,13 +134,17 @@ function stripZoneAnnotation(text: string): string {
  * `ReferenceError: Temporal is not defined` from inside a driver callback,
  * which tells the customer nothing about what to do.
  */
-export function requireTemporal(): void {
-	if (!("Temporal" in globalThis)) {
-		throw new Error(
-			"@databrill/core-pg-kysely returns Temporal values, but this runtime has no Temporal global. " +
-				'Load a polyfill before connecting: import "temporal-polyfill/global". For the TYPES, ' +
-				'TypeScript 7+ has "esnext.temporal" for its `lib`; on TypeScript 5.x or 6.x that lib ' +
-				"does not exist and the same polyfill import supplies the declarations.",
-		);
-	}
+export function requireTemporal(): Either.Either<void, Error> {
+	return Either.gen(function* () {
+		if (!("Temporal" in globalThis)) {
+			return yield* Either.left(
+				new Error(
+					"@databrill/core-pg-kysely returns Temporal values, but this runtime has no Temporal global. " +
+						'Load a polyfill before connecting: import "temporal-polyfill/global". For the TYPES, ' +
+						'TypeScript 7+ has "esnext.temporal" for its `lib`; on TypeScript 5.x or 6.x that lib ' +
+						"does not exist and the same polyfill import supplies the declarations.",
+				),
+			);
+		}
+	});
 }

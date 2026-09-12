@@ -1,6 +1,8 @@
+import { Effect } from "effect";
 import type { ReadonlyKysely } from "kysely/readonly";
 import type { DB } from "./db.ts";
 import { SCHEMA_VERSION } from "./schemaVersion.ts";
+import { tryPromiseOrOperationError } from "./tryPromiseOrOperationError.ts";
 
 /**
  * How badly the database's schema contract and this package disagree.
@@ -39,13 +41,13 @@ const SCHEMA_VERSION_COMPONENT = "tenant-schema";
 /**
  * Compare this package's schema contract against the connected database's.
  *
- * Never throws and never applies DDL: a missing table, a missing row, or a
- * permission error all resolve to `unknown`. A connectivity check is the
- * caller's job — failing their startup because a compatibility probe could not
- * read one row would be a worse outcome than not knowing.
+ * A missing version table or row resolves to `unknown`. Permission, connection,
+ * and query failures use the typed error channel. The check never applies DDL.
  *
  * ```ts
- * const result = await checkSchemaCompatibility(db);
+ * import { Effect } from "effect";
+ *
+ * const result = await Effect.runPromise(checkSchemaCompatibility(db));
  * if (result.level === "error") {
  * 	throw new Error(result.message);
  * }
@@ -54,25 +56,20 @@ const SCHEMA_VERSION_COMPONENT = "tenant-schema";
  * }
  * ```
  */
-export async function checkSchemaCompatibility(db: ReadonlyKysely<DB>): Promise<SchemaCompatibility> {
-	let databaseVersion: string | null = null;
-	try {
-		const row = await db
+export function checkSchemaCompatibility(db: ReadonlyKysely<DB>): Effect.Effect<SchemaCompatibility, Error> {
+	return tryPromiseOrOperationError(() =>
+		db
 			.selectFrom("databrill_schema_version")
 			.select("version")
 			.where("component", "=", SCHEMA_VERSION_COMPONENT)
-			.executeTakeFirst();
-		databaseVersion = row?.version ?? null;
-	} catch (cause) {
-		return {
-			level: "unknown",
-			packageVersion: SCHEMA_VERSION,
-			databaseVersion: null,
-			message: `Could not read the tenant schema version from the database (${describe(cause)}). ` +
-				`This package targets ${SCHEMA_VERSION}; compatibility is unverified.`,
-		};
-	}
-	return compareSchemaVersions(SCHEMA_VERSION, databaseVersion);
+			.executeTakeFirst()
+	).pipe(
+		Effect.map((row) => compareSchemaVersions(SCHEMA_VERSION, row?.version ?? null)),
+		Effect.catchIf(
+			(error) => "code" in error && error.code === "42P01",
+			() => Effect.succeed(compareSchemaVersions(SCHEMA_VERSION, null)),
+		),
+	);
 }
 
 /**
@@ -205,8 +202,4 @@ function parseVersion(value: string): Version | null {
 	}
 	const [, major, minor, patch] = match;
 	return { major: Number(major), minor: Number(minor), patch: Number(patch) };
-}
-
-function describe(cause: unknown): string {
-	return cause instanceof Error ? cause.message : String(cause);
 }

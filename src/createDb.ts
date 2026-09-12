@@ -1,5 +1,8 @@
+import { Deferred, Effect, Either, Exit } from "effect";
 import { Kysely, PostgresDialect } from "kysely";
 import type { ReadonlyKysely } from "kysely/readonly";
+import { tryOrOperationError } from "./tryOrOperationError.ts";
+import { tryPromiseOrOperationError } from "./tryPromiseOrOperationError.ts";
 // @ts-types="./pgMinimal.d.ts"
 import { Pool } from "pg";
 import type { DB } from "./db.ts";
@@ -50,7 +53,7 @@ export interface CreateDbOptions {
 	readonly host?: string;
 	readonly port?: number;
 	readonly user?: string;
-	readonly password?: string | (() => string | Promise<string>);
+	readonly password?: string;
 	readonly database?: string;
 	readonly ssl?: boolean | TenantTlsOptions;
 
@@ -126,7 +129,7 @@ export interface TenantPool {
 	/** True once the pool has been drained by `destroy()`. */
 	readonly ended: boolean;
 	/** Run SQL this package cannot express. */
-	query(text: string, values?: readonly unknown[]): Promise<TenantPoolResult>;
+	query(text: string, values?: readonly unknown[]): Effect.Effect<TenantPoolResult, Error>;
 	/** Attach your own idle-client error listener; it does not displace this package's. */
 	on(event: "error", listener: (error: Error) => void): void;
 }
@@ -168,8 +171,9 @@ export interface TenantDb {
 	 * Exposed as an escape hatch for connection metrics and for SQL this package
 	 * cannot express. Do not call `end()` on it directly; use
 	 * {@link TenantDb.destroy} — which {@link TenantPool} now enforces rather than
-	 * merely asking for, since it declares no `end()` at all. The value really is
-	 * `pg`'s `Pool`; only the published type is narrowed.
+	 * merely asking for, since it declares no `end()` at all. This object forwards
+	 * metrics and listeners to pg and returns Effects for owned queries; Kysely
+	 * receives the underlying native pool.
 	 */
 	readonly pool: TenantPool;
 
@@ -177,20 +181,22 @@ export interface TenantDb {
 	 * Close the shared pool. Idempotent, and invalidates BOTH surfaces — there is
 	 * one pool, so there is one teardown.
 	 */
-	readonly destroy: () => Promise<void>;
+	readonly destroy: () => Effect.Effect<void, Error>;
 }
 
 /**
  * Connect to a Databrill tenant database.
  *
  * ```ts
- * const { db, write, destroy } = createDb({
+ * import { Effect, Either } from "effect";
+ *
+ * const { db, write, destroy } = Either.getOrThrow(createDb({
  * 	connectionString: process.env.DATABRILL_DATABASE_URL,
  * 	schema: "w123456789",
- * });
+ * }));
  *
  * const rows = await db.selectFrom("amazon_listing_open").selectAll().execute();
- * await destroy();
+ * await Effect.runPromise(destroy());
  * ```
  *
  * Both surfaces run over one `pg` pool configured so the values you get back
@@ -206,92 +212,145 @@ export interface TenantDb {
  * `sslmode`" section.
  *
  * Requires `Temporal`, from the runtime itself or from
- * `temporal-polyfill/global`. This throws immediately if it is missing.
+ * `temporal-polyfill/global`. Execution fails before creating a pool if it is missing.
  */
-export function createDb(options: string | CreateDbOptions): TenantDb {
-	requireTemporal();
-	const { schema, ...poolConfig } = typeof options === "string" ? { connectionString: options } : options;
-	if (schema !== undefined && !isPlainIdentifier(schema)) {
-		throw new Error(
-			`Invalid schema name ${JSON.stringify(schema)}: expected a plain Postgres identifier ` +
-				`such as "public" or "w123456789".`,
+export function createDb(options: string | CreateDbOptions): Either.Either<TenantDb, Error> {
+	// Pool and Kysely construction open no connections. Database work starts
+	// only when the caller executes a query.
+	return Either.gen(function* () {
+		yield* requireTemporal();
+		const { schema, ...poolConfig } = typeof options === "string" ? { connectionString: options } : options;
+		if (schema !== undefined && !isPlainIdentifier(schema)) {
+			return yield* Either.left(
+				new Error(
+					`Invalid schema name ${JSON.stringify(schema)}: expected a plain Postgres identifier ` +
+						`such as "public" or "w123456789".`,
+				),
+			);
+		}
+
+		// `sslmode` is read off the connection string here and applied with libpq's
+		// meanings rather than `pg`'s; see `resolveSslMode`. The REWRITTEN string is
+		// what reaches the driver, because `pg` merges the parsed connection string
+		// over the config it was handed — leaving `sslmode=` in place would let the
+		// string overwrite both what this resolved and an `ssl` the caller passed.
+		//
+		// Both keys are spread conditionally, so a connection string this does not
+		// touch — and an absent `sslmode` — leave the pool config exactly as the
+		// caller wrote it, with no `ssl` key invented. `pg@8.23.0` would not notice
+		// the difference on its own: `connection-parameters.js:85` falls back to
+		// `PGSSLMODE` whenever `typeof config.ssl === "undefined"`, so a
+		// present-and-`undefined` key behaves like an absent one there. Not writing
+		// the key is what keeps that true regardless of how the check is spelled.
+		const tls = typeof poolConfig.connectionString === "string"
+			? yield* resolveSslMode(poolConfig.connectionString, poolConfig.ssl)
+			: undefined;
+		const connectionStringOption = tls === undefined ? {} : { connectionString: tls.connectionString };
+		const sslOption = tls === undefined || tls.ssl === undefined ? {} : { ssl: tls.ssl };
+
+		const pool = yield* tryOrOperationError(() =>
+			new Pool({
+				...poolConfig,
+				...connectionStringOption,
+				...sslOption,
+				types: makePgTypes(),
+			})
 		);
-	}
 
-	// `sslmode` is read off the connection string here and applied with libpq's
-	// meanings rather than `pg`'s; see `resolveSslMode`. The REWRITTEN string is
-	// what reaches the driver, because `pg` merges the parsed connection string
-	// over the config it was handed — leaving `sslmode=` in place would let the
-	// string overwrite both what this resolved and an `ssl` the caller passed.
-	//
-	// Both keys are spread conditionally, so a connection string this does not
-	// touch — and an absent `sslmode` — leave the pool config exactly as the
-	// caller wrote it, with no `ssl` key invented. `pg@8.23.0` would not notice
-	// the difference on its own: `connection-parameters.js:85` falls back to
-	// `PGSSLMODE` whenever `typeof config.ssl === "undefined"`, so a
-	// present-and-`undefined` key behaves like an absent one there. Not writing
-	// the key is what keeps that true regardless of how the check is spelled.
-	const tls = typeof poolConfig.connectionString === "string"
-		? resolveSslMode(poolConfig.connectionString, poolConfig.ssl)
-		: undefined;
-	const connectionStringOption = tls === undefined ? {} : { connectionString: tls.connectionString };
-	const sslOption = tls === undefined || tls.ssl === undefined ? {} : { ssl: tls.ssl };
+		// Teardown ends the POOL directly rather than going through either Kysely
+		// instance. Kysely's driver destroy is a no-op until that instance has
+		// actually acquired a connection (`if (!this.#initPromise) return`), and
+		// each instance builds its own driver over the shared pool — so routing
+		// teardown through `readBase` silently does nothing for a caller who only
+		// ever used `write`, leaving the pool open and the process unable to exit.
+		// One pool, one `end()`; calling it through both instances would `end()`
+		// twice, which throws.
+		//
+		// A Deferred shares the result with concurrent callers until draining finishes.
+		// A failed attempt is cleared so a later call can retry; successful cleanup
+		// stays idempotent. The attempt cannot be interrupted between ending the pool
+		// and notifying its waiters.
+		let teardown: Deferred.Deferred<void, Error> | undefined;
+		let ended = false;
+		function destroy(): Effect.Effect<void, Error> {
+			return Effect.uninterruptible(Effect.gen(function* () {
+				if (ended) {
+					return;
+				}
+				if (teardown !== undefined) {
+					return yield* Deferred.await(teardown);
+				}
+				const attempt = yield* Deferred.make<void, Error>();
+				teardown = attempt;
 
-	const pool = new Pool({ ...poolConfig, ...connectionStringOption, ...sslOption, types: makePgTypes() });
+				const result = yield* Effect.exit(tryPromiseOrOperationError(() => pool.end()));
+				ended = Exit.isSuccess(result);
+				teardown = undefined;
+				yield* Deferred.done(attempt, result);
+				return yield* result;
+			}));
+		}
 
-	// `pg-pool` emits `'error'` on the POOL when an idle client fails — a
-	// database restart, a pooler recycling a backend, someone running
-	// `pg_terminate_backend`. `EventEmitter` throws on an unhandled `'error'`,
-	// so with no listener that becomes an uncaught exception that kills the
-	// customer's process, thrown from inside a library they cannot reach. This
-	// package constructs the pool, so it must attach a listener to the pool.
-	//
-	// Swallowing is correct here and elsewhere would not be: an idle-client
-	// failure has no caller to reject — the pool discards the client and the
-	// next checkout opens a fresh connection. Callers who want visibility
-	// attach their own listener to the exposed `pool`, which this does not
-	// displace.
-	pool.on("error", () => {});
+		const { db, write } = yield* tryOrOperationError(() => {
+			// `pg-pool` emits `'error'` on the POOL when an idle client fails — a
+			// database restart, a pooler recycling a backend, someone running
+			// `pg_terminate_backend`. `EventEmitter` throws on an unhandled `'error'`,
+			// so with no listener that becomes an uncaught exception that kills the
+			// customer's process, thrown from inside a library they cannot reach. This
+			// package constructs the pool, so it must attach a listener to the pool.
+			//
+			// Swallowing is correct here and elsewhere would not be: an idle-client
+			// failure has no caller to reject — the pool discards the client and the
+			// next checkout opens a fresh connection. Callers who want visibility
+			// attach their own listener to the exposed `pool`, which this does not
+			// displace.
+			pool.on("error", () => {});
 
-	const dialect = new PostgresDialect({ pool });
-	const plugins = [temporalParameterPlugin];
-	const readBase = new Kysely<DB>({ dialect, plugins });
-	const writeBase = new Kysely<WritableDB>({ dialect, plugins });
+			const dialect = new PostgresDialect({ pool });
+			const plugins = [temporalParameterPlugin];
+			const readBase = new Kysely<DB>({ dialect, plugins });
+			const writeBase = new Kysely<WritableDB>({ dialect, plugins });
 
-	// `as never` is the construction the Kysely documentation itself prescribes
-	// for handing out a read-only view: `ReadonlyKysely` narrows `Kysely`'s
-	// method signatures to error types, so the two are not mutually assignable
-	// and no widening or generic trick bridges them. This is the single
-	// assertion in the package, and it is needed — the alternative is
-	// publishing a mutable handle.
-	const readable: ReadonlyKysely<DB> = readBase as never;
+			// `as never` is the construction the Kysely documentation itself prescribes
+			// for handing out a read-only view: `ReadonlyKysely` narrows `Kysely`'s
+			// method signatures to error types, so the two are not mutually assignable
+			// and no widening or generic trick bridges them. This is the single
+			// assertion in the package, and it is needed — the alternative is
+			// publishing a mutable handle.
+			const readable: ReadonlyKysely<DB> = readBase as never;
 
-	const db = schema === undefined ? readable : readable.withSchema(schema);
-	const write = schema === undefined ? writeBase : writeBase.withSchema(schema);
-
-	// Teardown ends the POOL directly rather than going through either Kysely
-	// instance. Kysely's driver destroy is a no-op until that instance has
-	// actually acquired a connection (`if (!this.#initPromise) return`), and
-	// each instance builds its own driver over the shared pool — so routing
-	// teardown through `readBase` silently does nothing for a caller who only
-	// ever used `write`, leaving the pool open and the process unable to exit.
-	// One pool, one `end()`; calling it through both instances would `end()`
-	// twice, which throws.
-	//
-	// The in-flight promise is memoized so a second caller waits for the pool to
-	// finish draining rather than resolving early — but a REJECTED teardown is
-	// cleared, so a caller whose shutdown handler catches and retries gets a
-	// real second attempt instead of the same cached failure forever.
-	let teardown: Promise<void> | null = null;
-	function destroy(): Promise<void> {
-		teardown ??= pool.end().catch((cause: unknown) => {
-			teardown = null;
-			throw cause;
+			const db = schema === undefined ? readable : readable.withSchema(schema);
+			const write = schema === undefined ? writeBase : writeBase.withSchema(schema);
+			return { db, write };
 		});
-		return teardown;
-	}
 
-	return { db, write, pool, destroy };
+		const exposedPool: TenantPool = {
+			get totalCount() {
+				return pool.totalCount;
+			},
+			get idleCount() {
+				return pool.idleCount;
+			},
+			get waitingCount() {
+				return pool.waitingCount;
+			},
+			get ended() {
+				return pool.ended;
+			},
+			query(text, values) {
+				// pg exposes no cancellation signal here. Wait for completion so an
+				// interrupted caller cannot begin cleanup while its query still runs.
+				return Effect.uninterruptible(
+					tryPromiseOrOperationError(() => pool.query(text, values)),
+				);
+			},
+			on(event, listener) {
+				pool.on(event, listener);
+			},
+		};
+
+		return { db, write, pool: exposedPool, destroy };
+	});
 }
 
 /**

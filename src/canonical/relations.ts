@@ -1,4 +1,6 @@
+import { Effect } from "effect";
 import { type Kysely, sql } from "kysely";
+import { tryOrOperationError } from "../tryOrOperationError.ts";
 import type { DB } from "../types.ts";
 import { type CanonicalQueryRunner, executeCompiled } from "./execute.ts";
 
@@ -16,18 +18,23 @@ import { type CanonicalQueryRunner, executeCompiled } from "./execute.ts";
  * already pinned to the caller's workspace schema, so this asks exactly the
  * question the reader's own queries will ask.
  */
-export async function probeRelations(
+export function probeRelations(
 	db: Kysely<DB>,
 	runner: CanonicalQueryRunner,
 	relations: readonly string[],
-): Promise<ReadonlySet<string>> {
-	if (relations.length === 0) {
-		return new Set();
-	}
-	const query = sql<{ relation: string; present: boolean }>`
-		SELECT r AS "relation", to_regclass(quote_ident(r)) IS NOT NULL AS "present"
-		FROM unnest(${sql.val(relations)}::text[]) AS r
-	`;
-	const rows = await executeCompiled(runner, query.compile(db));
-	return new Set(rows.filter((row) => row.present).map((row) => row.relation));
+): Effect.Effect<ReadonlySet<string>, Error> {
+	return Effect.gen(function* () {
+		if (relations.length === 0) {
+			return new Set();
+		}
+		const query = sql<{ relation: string; present: boolean }>`
+			SELECT r AS "relation", to_regclass(quote_ident(r)) IS NOT NULL AS "present"
+			FROM unnest(${sql.val(relations)}::text[]) AS r
+		`;
+		const rows = yield* executeCompiled(
+			runner,
+			yield* tryOrOperationError(() => query.compile(db)),
+		);
+		return new Set(rows.filter((row) => row.present).map((row) => row.relation));
+	});
 }

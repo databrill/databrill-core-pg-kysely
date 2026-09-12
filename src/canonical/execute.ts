@@ -1,3 +1,4 @@
+import { Effect, Either } from "effect";
 import {
 	type CompiledQuery,
 	DummyDriver,
@@ -6,9 +7,16 @@ import {
 	PostgresIntrospector,
 	PostgresQueryCompiler,
 } from "kysely";
-import type { DB } from "../types.ts";
-import { OID_DATE, OID_TIMESTAMP, OID_TIMESTAMPTZ, temporalOidParsers } from "../temporalOidParsers.ts";
+import {
+	OID_DATE,
+	OID_TIMESTAMP,
+	OID_TIMESTAMPTZ,
+	type TemporalOidParser,
+	temporalOidParsers,
+} from "../temporalOidParsers.ts";
 import { temporalToPostgres } from "../temporalValues.ts";
+import { tryPromiseOrOperationError } from "../tryPromiseOrOperationError.ts";
+import type { DB } from "../types.ts";
 
 /**
  * Kysely as a query COMPILER, and the postgres.js configuration that makes the
@@ -53,8 +61,8 @@ export function createCanonicalQueryBuilder(): Kysely<DB> {
 /**
  * The one method a canonical reader needs from an injected connection.
  *
- * Structural rather than an import of postgres.js's `Sql`: this package declares
- * `kysely` and `pg` and nothing else, and a canonical reader must not add a
+ * Structural rather than an import of postgres.js's `Sql`: this package uses
+ * `kysely` and `pg` for database access, and a canonical reader must not add a
  * second driver to that list. A real postgres.js `Sql` satisfies this shape, so
  * a caller passes `sql` directly with no adapter.
  *
@@ -78,11 +86,14 @@ export interface CanonicalQueryRunner {
  * {@link makePostgresJsTypes}. A connection built without it returns `Date`
  * objects where these types promise Temporal values.
  */
-export async function executeCompiled<O>(
+export function executeCompiled<O>(
 	runner: CanonicalQueryRunner,
 	compiled: CompiledQuery<O>,
-): Promise<O[]> {
-	return await runner.unsafe<O[]>(compiled.sql, compiled.parameters);
+): Effect.Effect<O[], Error> {
+	// The injected protocol has no cancellation operation. Finish outstanding
+	// foreign work before interruption allows the owner to release its connection.
+	const fn = () => Promise.resolve(runner.unsafe<O[]>(compiled.sql, compiled.parameters));
+	return Effect.uninterruptible(tryPromiseOrOperationError(fn));
 }
 
 /**
@@ -125,16 +136,17 @@ export interface PostgresJsTypeHandler {
  */
 export function makePostgresJsTypes(): Readonly<Record<string, PostgresJsTypeHandler>> {
 	return {
-		plainDate: handlerFor(OID_DATE),
-		plainDateTime: handlerFor(OID_TIMESTAMP),
-		instant: handlerFor(OID_TIMESTAMPTZ),
+		plainDate: handlerFor(OID_DATE, temporalOidParsers[OID_DATE]),
+		plainDateTime: handlerFor(OID_TIMESTAMP, temporalOidParsers[OID_TIMESTAMP]),
+		instant: handlerFor(OID_TIMESTAMPTZ, temporalOidParsers[OID_TIMESTAMPTZ]),
 	};
 }
 
-function handlerFor(oid: number): PostgresJsTypeHandler {
-	const parse = temporalOidParsers[oid];
-	if (parse === undefined) {
-		throw new Error(`No Temporal parser registered for Postgres OID ${oid}`);
-	}
-	return { to: oid, from: [oid], serialize: temporalToPostgres, parse };
+function handlerFor(oid: number, parse: TemporalOidParser): PostgresJsTypeHandler {
+	return {
+		to: oid,
+		from: [oid],
+		serialize: (value) => Either.getOrThrowWith(temporalToPostgres(value), (error) => error),
+		parse,
+	};
 }

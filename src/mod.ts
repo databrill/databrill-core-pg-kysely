@@ -3,25 +3,29 @@
  * database.
  *
  * ```ts
+ * import { Effect, Either } from "effect";
  * import { checkSchemaCompatibility, createDb } from "@databrill/core-pg-kysely";
  *
- * const { db, write, destroy } = createDb({
+ * const { db, write, destroy } = Either.getOrThrow(createDb({
  * 	connectionString: Deno.env.get("DATABRILL_DATABASE_URL"),
  * 	schema: "w123456789",
- * });
+ * }));
  *
- * const compatibility = await checkSchemaCompatibility(db);
- * if (compatibility.level === "error") {
- * 	throw new Error(compatibility.message);
+ * try {
+ * 	const compatibility = await Effect.runPromise(checkSchemaCompatibility(db));
+ * 	if (compatibility.level === "error") {
+ * 		throw new Error(compatibility.message);
+ * 	}
+ *
+ * 	const listings = await db
+ * 		.selectFrom("amazon_listing_open")
+ * 		.select(["sku", "asin"])
+ * 		.limit(10)
+ * 		.execute();
+ *
+ * } finally {
+ * 	await Effect.runPromise(destroy());
  * }
- *
- * const listings = await db
- * 	.selectFrom("amazon_listing_open")
- * 	.select(["sku", "asin"])
- * 	.limit(10)
- * 	.execute();
- *
- * await destroy();
  * ```
  *
  * `db` covers every published table and view and rejects writes at compile
@@ -45,10 +49,10 @@
 // An unexported one would be a member of a public interface that nobody can
 // name.
 
-export { createDb } from "./createDb.ts";
-export type { CreateDbOptions, TenantDb, TenantPool, TenantPoolResult, TenantTlsOptions } from "./createDb.ts";
 export { checkSchemaCompatibility } from "./checkSchemaCompatibility.ts";
 export type { SchemaCompatibility, SchemaCompatibilityLevel } from "./checkSchemaCompatibility.ts";
+export { createDb } from "./createDb.ts";
+export type { CreateDbOptions, TenantDb, TenantPool, TenantPoolResult, TenantTlsOptions } from "./createDb.ts";
 
 // For customers who build their own dialect instead of using `createDb`: these
 // three are what make the published types true, on the read side and the write
@@ -60,8 +64,8 @@ export { requireTemporal, UnrepresentableTemporalValueError } from "./temporalVa
 
 export type * from "./db.ts";
 export type { InstantColumn, PlainDateColumn, PlainDateTimeColumn } from "./temporalColumns.ts";
-export type { WritableDB, WritableTableName } from "./WritableDB.ts";
 export { WRITABLE_TABLE_NAMES } from "./WRITABLE_TABLE_NAMES.ts";
+export type { WritableDB, WritableTableName } from "./WritableDB.ts";
 // `DB` names every relation Databrill can provision; a given workspace holds a
 // subset of them. These two lists are what a customer diffs against their own
 // schema to find out which of those names their database actually has.

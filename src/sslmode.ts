@@ -1,3 +1,4 @@
+import { Either } from "effect";
 import type { TenantTlsOptions } from "./createDb.ts";
 
 // `sslmode`, read off the connection string and applied with LIBPQ's meanings.
@@ -7,9 +8,8 @@ import type { TenantTlsOptions } from "./createDb.ts";
 // which query parameters this package consumes is an implementation detail.
 // The package's own tests import it by relative path.
 //
-// Nothing here imports anything at runtime: `URL` and `URLSearchParams` are
-// globals. Keep it that way — this module is the reason the feature needed no
-// new dependency.
+// URL parsing uses the runtime's `URL` and `URLSearchParams`; Either exposes
+// validation failures without adding a second connection-string parser.
 //
 // Why hand-rolled rather than `pg-connection-string`'s `uselibpqcompat=true`:
 // that mode does not cover `allow` (it falls through to verify-full, the
@@ -52,7 +52,14 @@ export interface SslModeResolution {
 }
 
 /** The modes libpq accepts, in its own order, for the error message. */
-const SSL_MODES: readonly string[] = ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"];
+const SSL_MODES: readonly string[] = [
+	"disable",
+	"allow",
+	"prefer",
+	"require",
+	"verify-ca",
+	"verify-full",
+];
 
 /**
  * The query parameters this package reads and therefore removes.
@@ -77,40 +84,50 @@ const CONSUMED_PARAMETERS: readonly string[] = ["sslmode", "uselibpqcompat"];
  * and fall back to the other — are "always TLS, unverified" here.
  *
  * Compared case-sensitively, matching `pg-connection-string`'s own switch:
- * `sslmode=Require` throws rather than silently meaning something.
+ * `sslmode=Require` fails rather than silently meaning something.
  *
  * @param mode the raw value read from the connection string
  * @param ca the CA the caller supplied, if any; `verify-ca` refuses without one
  */
-export function tlsConfigForSslMode(mode: string, ca: string | undefined): boolean | ResolvedTlsConfig {
+export function tlsConfigForSslMode(
+	mode: string,
+	ca: string | undefined,
+): Either.Either<boolean | ResolvedTlsConfig, Error> {
 	switch (mode) {
 		case "disable":
-			return false;
+			return Either.right(false);
 		case "allow":
 		case "prefer":
 		case "require":
-			return { rejectUnauthorized: false };
+			return Either.right({ rejectUnauthorized: false });
 		case "verify-ca":
 			// The same refusal `pg-connection-string`'s libpq-compat branch
 			// makes, and for the same reason: `verify-ca` against the public
 			// root store accepts any publicly-trusted certificate for any
 			// hostname, which is not what anyone writing `verify-ca` wants.
 			if (ca === undefined) {
-				throw new Error(
-					`sslmode=verify-ca needs a certificate authority, and none was supplied. Pass the ` +
-						`certificate contents as ssl: { ca } — an explicit ssl option takes precedence over ` +
-						`the connection string. Verifying against the public root store instead would accept ` +
-						`any publicly-trusted certificate for any hostname. This package does not read ` +
-						`sslrootcert= from disk.`,
+				return Either.left(
+					new Error(
+						`sslmode=verify-ca needs a certificate authority, and none was supplied. Pass the ` +
+							`certificate contents as ssl: { ca } — an explicit ssl option takes precedence over ` +
+							`the connection string. Verifying against the public root store instead would accept ` +
+							`any publicly-trusted certificate for any hostname. This package does not read ` +
+							`sslrootcert= from disk.`,
+					),
 				);
 			}
-			return { rejectUnauthorized: true, checkServerIdentity: () => undefined };
+			return Either.right({
+				rejectUnauthorized: true,
+				checkServerIdentity: () => undefined,
+			});
 		case "verify-full":
-			return { rejectUnauthorized: true };
+			return Either.right({ rejectUnauthorized: true });
 		default:
-			throw new Error(
-				`Invalid sslmode ${JSON.stringify(mode)} in the connection string: expected one of ` +
-					`${SSL_MODES.join(", ")}. Modes are matched exactly, so the spelling is case-sensitive.`,
+			return Either.left(
+				new Error(
+					`Invalid sslmode ${JSON.stringify(mode)} in the connection string: expected one of ` +
+						`${SSL_MODES.join(", ")}. Modes are matched exactly, so the spelling is case-sensitive.`,
+				),
 			);
 	}
 }
@@ -131,7 +148,7 @@ export function tlsConfigForSslMode(mode: string, ca: string | undefined): boole
  *
  * An explicit `ssl` wins over the string. When `callerSsl` is anything other
  * than `undefined` — `false` included — it is what comes back, the `sslmode` is
- * not consulted, and so a typo'd mode does not throw. The parameters are still
+ * not consulted, and so a typo'd mode does not fail. The parameters are still
  * stripped, because the stripping is the only thing that stops the string
  * overriding the caller.
  *
@@ -143,48 +160,56 @@ export function tlsConfigForSslMode(mode: string, ca: string | undefined): boole
 export function resolveSslMode(
 	connectionString: string,
 	callerSsl: boolean | TenantTlsOptions | undefined,
-): SslModeResolution {
-	const unchanged: SslModeResolution = { connectionString, ssl: callerSsl };
+): Either.Either<SslModeResolution, Error> {
+	return Either.gen(function* () {
+		const unchanged: SslModeResolution = {
+			connectionString,
+			ssl: callerSsl,
+		};
 
-	// `pg-connection-string` treats a leading `/` as a unix socket path, and a
-	// libpq key/value string does not parse as a `URL` at all. Both are handed
-	// back byte-identical for `pg` to do whatever it does.
-	if (connectionString.startsWith("/")) {
-		return unchanged;
-	}
-	const url = parseConnectionUri(connectionString);
-	if (url === undefined) {
-		return unchanged;
-	}
+		// `pg-connection-string` treats a leading `/` as a unix socket path, and a
+		// libpq key/value string does not parse as a `URL` at all. Both are handed
+		// back byte-identical for `pg` to do whatever it does.
+		if (connectionString.startsWith("/")) {
+			return unchanged;
+		}
+		const url = parseConnectionUri(connectionString);
+		if (url === undefined) {
+			return unchanged;
+		}
 
-	// The LAST occurrence wins, matching `pg-connection-string`, which assigns
-	// each entry of `searchParams` over the last. `URLSearchParams.get()`
-	// returns the FIRST, so acting on it would apply a different mode from the
-	// one `pg` would have seen.
-	const modes = url.searchParams.getAll("sslmode");
-	const mode = modes.length === 0 ? undefined : modes[modes.length - 1];
-	if (mode === undefined) {
-		return unchanged;
-	}
+		// The LAST occurrence wins, matching `pg-connection-string`, which assigns
+		// each entry of `searchParams` over the last. `URLSearchParams.get()`
+		// returns the FIRST, so acting on it would apply a different mode from the
+		// one `pg` would have seen.
+		const modes = url.searchParams.getAll("sslmode");
+		const mode = modes.length === 0 ? undefined : modes[modes.length - 1];
+		if (mode === undefined) {
+			return unchanged;
+		}
 
-	// An explicit `ssl` wins outright, so the mode is not consulted and an
-	// unrecognised one does not throw. The parameters are still stripped: the
-	// stripping is the only thing that stops the string overriding the caller.
-	if (callerSsl !== undefined) {
-		return { connectionString: stripConsumedParameters(connectionString), ssl: callerSsl };
-	}
+		// An explicit `ssl` wins outright, so the mode is not consulted and an
+		// unrecognised one does not fail. The parameters are still stripped: the
+		// stripping is the only thing that stops the string overriding the caller.
+		if (callerSsl !== undefined) {
+			return {
+				connectionString: stripConsumedParameters(connectionString),
+				ssl: callerSsl,
+			};
+		}
 
-	// The CA is `undefined` here and can only ever be: one reaches this package
-	// through the `ssl` option, and that option has returned above. So
-	// `sslmode=verify-ca` always throws today, and the branch of
-	// `tlsConfigForSslMode` that builds a `checkServerIdentity` config is
-	// reachable only by calling the mapping directly. That is decision 1 (an
-	// explicit `ssl` wins) and decision 5 (`verify-ca` needs a CA) composing,
-	// not an oversight; the README states the consequence outright.
-	return {
-		connectionString: stripConsumedParameters(connectionString),
-		ssl: tlsConfigForSslMode(mode, undefined),
-	};
+		// The CA is `undefined` here and can only ever be: one reaches this package
+		// through the `ssl` option, and that option has returned above. So
+		// `sslmode=verify-ca` always fails today, and the branch of
+		// `tlsConfigForSslMode` that builds a `checkServerIdentity` config is
+		// reachable only by calling the mapping directly. That is decision 1 (an
+		// explicit `ssl` wins) and decision 5 (`verify-ca` needs a CA) composing,
+		// not an oversight; the README states the consequence outright.
+		return {
+			connectionString: stripConsumedParameters(connectionString),
+			ssl: yield* tlsConfigForSslMode(mode, undefined),
+		};
+	});
 }
 
 /**
@@ -199,7 +224,12 @@ export function resolveSslMode(
  * stop. The dummy host is never used for anything but finding the query.
  */
 function parseConnectionUri(connectionString: string): URL | undefined {
-	for (const candidate of [connectionString, connectionString.replace("@/", "@___DUMMY___/")]) {
+	for (
+		const candidate of [
+			connectionString,
+			connectionString.replace("@/", "@___DUMMY___/"),
+		]
+	) {
 		let url: URL;
 		try {
 			url = new URL(candidate);
@@ -237,9 +267,13 @@ function stripConsumedParameters(connectionString: string): string {
 	const fragment = hashIndex === -1 ? "" : connectionString.slice(hashIndex);
 	const head = connectionString.slice(0, queryStart);
 
-	const kept = rawQuery.split("&").filter(function isKept(rawPair: string): boolean {
-		return !CONSUMED_PARAMETERS.includes(decodeQueryComponent(rawKey(rawPair)));
-	});
+	const kept = rawQuery.split("&").filter(
+		function isKept(rawPair: string): boolean {
+			return !CONSUMED_PARAMETERS.includes(
+				decodeQueryComponent(rawKey(rawPair)),
+			);
+		},
+	);
 	if (kept.length === 0) {
 		return head + fragment;
 	}
