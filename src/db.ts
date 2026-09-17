@@ -1377,25 +1377,97 @@ export interface DbTable_amzagg_profit__orderItemProjectionState {
 }
 
 /**
- * FBA inventory at the physical grain: one row per (merchant, marketplace,
- * FNSKU), with the whole quantity tree flattened. Derived from
- * amzspapi_fbaInventory_v1__InventorySummary, whose per-seller-SKU grain
- * repeats a commingled pool once per label and overstates units.
+ * Per-day FBA inventory history at the physical grain: one row per (merchant,
+ * marketplace, FNSKU) and marketplace-local calendar date, with the lowest,
+ * highest, first and last fulfillable and buyable future-supply quantities
+ * among the changes recorded that day. A row exists only for a day on which
+ * the FNSKU's row in amzfact_fnsku_fbaInventory_latest changed, so a missing
+ * day means unchanged since the previous row. The value carried into a day is
+ * the previous row's Last, and the whole day's highest and lowest are
+ * GREATEST(Max, previous Last) and LEAST(Min, previous Last).
  *
  * Read-only: it is not in `WritableDB`.
  */
-export interface DbTable_amzfact_fnsku_fbaInventory {
+export interface DbTable_amzfact_fnsku_fbaInventory_history {
 	/**
-	 * ASIN of the pool, denormalised to save a join on every rollup
+	 * Calendar date, in the marketplace's own time zone, of the observations the row summarizes
+	 */
+	date: PlainDateColumn;
+	/**
+	 * Amazon fulfillment network SKU, which identifies the physical units. Equals the ASIN for commingled items.
+	 */
+	fnsku: string;
+	/**
+	 * Fulfillable quantity at observedAtFirst, the day's first recorded change; the value at the start of the day is the previous row's fulfillableLast. Null when that observation did not report one
+	 */
+	fulfillableFirst: number | null;
+	/**
+	 * Fulfillable quantity at observedAtLast; null when that observation did not report one
+	 */
+	fulfillableLast: number | null;
+	/**
+	 * Highest fulfillable quantity among the changes recorded on the day, which leaves out the value carried in from the previous row; null when no observation reported one
+	 */
+	fulfillableMax: number | null;
+	/**
+	 * Lowest fulfillable quantity among the changes recorded on the day, which leaves out the value carried in from the previous row; null when no observation reported one
+	 */
+	fulfillableMin: number | null;
+	/**
+	 * Buyable future-supply quantity at observedAtFirst, the day's first recorded change; the value at the start of the day is the previous row's futureSupplyBuyableLast. Null when that observation did not report one
+	 */
+	futureSupplyBuyableFirst: number | null;
+	/**
+	 * Buyable future-supply quantity at observedAtLast; null when that observation did not report one
+	 */
+	futureSupplyBuyableLast: number | null;
+	/**
+	 * Highest buyable future-supply quantity among the changes recorded on the day, which leaves out the value carried in from the previous row; null when no observation reported one
+	 */
+	futureSupplyBuyableMax: number | null;
+	/**
+	 * Lowest buyable future-supply quantity among the changes recorded on the day, which leaves out the value carried in from the previous row; null when no observation reported one
+	 */
+	futureSupplyBuyableMin: number | null;
+	/**
+	 * Marketplace the quantities were reported for; quantities are per marketplace
+	 */
+	marketplaceId: string;
+	/**
+	 * Amazon merchant (seller) id owning the units
+	 */
+	merchantId: string;
+	/**
+	 * Earliest observation instant included in the row
+	 */
+	observedAtFirst: InstantColumn;
+	/**
+	 * Latest observation instant included in the row
+	 */
+	observedAtLast: InstantColumn;
+}
+
+/**
+ * Current FBA inventory at the physical grain: one row per (merchant,
+ * marketplace, FNSKU), with the whole quantity tree flattened. Derived from
+ * amzspapi_fbaInventory_v1__InventorySummary, whose per-seller-SKU grain
+ * repeats a commingled FNSKU once per label and overstates units. Per-day
+ * history is in amzfact_fnsku_fbaInventory_history.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzfact_fnsku_fbaInventory_latest {
+	/**
+	 * ASIN of the FNSKU, denormalised to save a join on every rollup
 	 */
 	asin: string | null;
 	carrierDamagedQuantity: number | null;
 	/**
-	 * Item condition as the seller described it. Not part of the key; the writer reports a pool whose summaries disagree on it.
+	 * Item condition as the seller described it. Not part of the key; the writer reports an FNSKU whose summaries disagree on it.
 	 */
 	condition: string | null;
 	/**
-	 * Digest over the quantity and identity state, used as the upsert's whereDistinct guard so an unchanged pool is not rewritten
+	 * Digest over the quantity and identity state, used as the upsert's whereDistinct guard so an unchanged FNSKU row is not rewritten
 	 */
 	contentHash: string;
 	createdAt: InstantColumn;
@@ -1405,10 +1477,14 @@ export interface DbTable_amzfact_fnsku_fbaInventory {
 	expiredQuantity: number | null;
 	fcProcessingQuantity: number | null;
 	/**
-	 * Amazon fulfillment network SKU — the physical pool. Equals the ASIN for commingled items.
+	 * Amazon fulfillment network SKU, which identifies the physical units. Equals the ASIN for commingled items.
 	 */
 	fnsku: string;
 	fulfillableQuantity: number | null;
+	/**
+	 * Units Amazon reports as buyable future supply, sellable ahead of their arrival. Returned by the API under inventoryDetails.futureSupplyQuantity but absent from Amazon's published model. Not part of totalQuantity. Null when not reported, never 0.
+	 */
+	futureSupplyBuyableQuantity: number | null;
 	inboundReceivingQuantity: number | null;
 	inboundShippedQuantity: number | null;
 	inboundWorkingQuantity: number | null;
@@ -1417,7 +1493,7 @@ export interface DbTable_amzfact_fnsku_fbaInventory {
 	 */
 	marketplaceId: string;
 	/**
-	 * Amazon merchant (seller) id owning the pool
+	 * Amazon merchant (seller) id owning the units
 	 */
 	merchantId: string;
 	/**
@@ -1433,6 +1509,10 @@ export interface DbTable_amzfact_fnsku_fbaInventory {
 	researchingQuantityInLongTerm: number | null;
 	researchingQuantityInMidTerm: number | null;
 	researchingQuantityInShortTerm: number | null;
+	/**
+	 * Units of future supply Amazon reports as reserved. Returned by the API under inventoryDetails.futureSupplyQuantity but absent from Amazon's published model. Not part of totalQuantity. Null when not reported, never 0.
+	 */
+	reservedFutureSupplyQuantity: number | null;
 	/**
 	 * Which writer last wrote this row. A literal union so a second source needs no DDL.
 	 */
@@ -1472,7 +1552,7 @@ export interface DbTable_amzfact_fnsku_ledger_estimate {
 	 */
 	endingWarehouseBalance: number;
 	/**
-	 * Amazon fulfillment network SKU, the physical pool
+	 * Amazon fulfillment network SKU, which identifies the physical units
 	 */
 	fnsku: string;
 	/**
@@ -1532,7 +1612,7 @@ export interface DbTable_amzfact_fnsku_ledger_history {
 	 */
 	endingWarehouseBalance: number;
 	/**
-	 * Amazon fulfillment network SKU, the physical pool
+	 * Amazon fulfillment network SKU, which identifies the physical units
 	 */
 	fnsku: string;
 	/**
@@ -1591,7 +1671,7 @@ export interface DbTable_amzfact_fnsku_ledger_latest {
 	 */
 	endingWarehouseBalance: number;
 	/**
-	 * Amazon fulfillment network SKU, the physical pool
+	 * Amazon fulfillment network SKU, which identifies the physical units
 	 */
 	fnsku: string;
 	/**
@@ -1854,7 +1934,7 @@ export interface DbTable_amzfact_sku_identity {
 	contentHash: string;
 	createdAt: InstantColumn;
 	/**
-	 * The pool this label points at; joins to amzfact_fnsku_fbaInventory.fnsku
+	 * The FNSKU this label points at; joins to amzfact_fnsku_fbaInventory_latest.fnsku
 	 */
 	fnsku: string | null;
 	/**
@@ -6900,7 +6980,8 @@ export interface DB {
 	amzadapi_reports_v1__search_asin_placement__byDay: DbTable_amzadapi_reports_v1__search_asin_placement__byDay;
 	amzagg_profit__orderItem: DbTable_amzagg_profit__orderItem;
 	amzagg_profit__orderItemProjectionState: DbTable_amzagg_profit__orderItemProjectionState;
-	amzfact_fnsku_fbaInventory: DbTable_amzfact_fnsku_fbaInventory;
+	amzfact_fnsku_fbaInventory_history: DbTable_amzfact_fnsku_fbaInventory_history;
+	amzfact_fnsku_fbaInventory_latest: DbTable_amzfact_fnsku_fbaInventory_latest;
 	amzfact_fnsku_ledger_estimate: DbTable_amzfact_fnsku_ledger_estimate;
 	amzfact_fnsku_ledger_history: DbTable_amzfact_fnsku_ledger_history;
 	amzfact_fnsku_ledger_latest: DbTable_amzfact_fnsku_ledger_latest;
