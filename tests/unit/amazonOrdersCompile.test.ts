@@ -89,10 +89,18 @@ Deno.test("AmazonOrders compile - daily ECB conversion prefers previous then fut
 		}),
 	));
 	assertStringIncludes(compiled.sql, `left join lateral`);
-	assertStringIncludes(compiled.sql, `"fromFxRows"."timeFormat" = `);
-	assertStringIncludes(compiled.sql, `"fromFxRows"."period" <= "o"."localdate"::text`);
-	assertStringIncludes(compiled.sql, `"fromFxRows"."period" END desc`);
-	assertStringIncludes(compiled.sql, `"fromFxRows"."period" END asc`);
+	assertStringIncludes(compiled.sql, `"fx"."timeFormat" = `);
+	// The currency is cast to the CHAR(3) column's type, so the primary key serves both probes.
+	assertStringIncludes(compiled.sql, `"fx"."unit" = (COALESCE("o"."currency", "m"."currency"))::bpchar`);
+	assertStringIncludes(
+		compiled.sql,
+		`"fx"."period" <= "o"."localdate"::text order by "fx"."period" desc limit $`,
+	);
+	assertStringIncludes(
+		compiled.sql,
+		`"fx"."period" > "o"."localdate"::text order by "fx"."period" asc limit $`,
+	);
+	assertStringIncludes(compiled.sql, `COALESCE((select "fx"."value"`);
 	assertStringIncludes(compiled.sql, `ELSE COALESCE("o"."currency", "m"."currency")`);
 	assertStringIncludes(compiled.sql, `THEN 1::numeric ELSE "fromFx"."value"::numeric END`);
 	assertStringIncludes(compiled.sql, `THEN 1::numeric ELSE "toFx"."value"::numeric END`);

@@ -13,7 +13,7 @@ import { col, qualified, rel } from "./names.ts";
  * the report date, and the day-after run lands sales rows with page views of
  * zero. The newest date present in the table is therefore routinely a
  * placeholder day, whose row count and session count collapse to a small
- * fraction of a normal day's, while most marketplaces genuinely stopped one or
+ * fraction of a normal day's, while the last genuinely complete day is one or
  * two days earlier. A reader that treats "a row exists" as "the day is present"
  * reports near-zero traffic for the most recent days and no consumer can tell.
  *
@@ -38,10 +38,11 @@ import { col, qualified, rel } from "./names.ts";
 export const FRESHNESS_RULE = {
 	/**
 	 * A date is definitive when its signal is at least this fraction of the
-	 * store's baseline. Deliberately loose: real day-to-day variation on a
-	 * healthy store is well inside 2x, while a placeholder day is an order of
-	 * magnitude down, so anything from 0.3 to 0.7 separates them equally well and
-	 * a tighter threshold would only start rejecting slow weekends.
+	 * store's baseline. Deliberately loose: a placeholder day is a collapse of the
+	 * signal while normal day-to-day variation on a healthy store is not, so any
+	 * threshold well clear of both a collapsed day and an ordinary slow day
+	 * separates them, and a tighter threshold would only start rejecting slow
+	 * weekends.
 	 */
 	fraction: 0.5,
 	/** Baseline = the median signal over this many of the store's most recent present dates. */
@@ -62,10 +63,11 @@ export const FRESHNESS_RULE = {
  *
  * Unlike sales-and-traffic, ALL_ORDERS does not publish placeholder days. Its
  * incomplete value is the marketplace's current calendar day, which grows with
- * every hourly report. The report's measured p95 lag is about 127 minutes, so a
- * day becomes eligible two hours after marketplace-local midnight. The reader
- * also refuses to move beyond the latest order date it has observed, which
- * exposes a stale source instead of advancing on the clock alone.
+ * every hourly report. Amazon's ALL_ORDERS report has a measured p95 lag of
+ * about 127 minutes, so a day becomes eligible two hours after
+ * marketplace-local midnight. The reader also refuses to move beyond the latest
+ * order date it has observed, which exposes a stale source instead of advancing
+ * on the clock alone.
  */
 export const ORDERS_FRESHNESS_RULE = {
 	midnightBufferHours: 2,
@@ -159,7 +161,7 @@ export function storeFreshnessQuery(stores: readonly StoreRef[]): RawBuilder<Fre
  * SQP arrives as a closed WEEK or MONTH report, so latest present and latest
  * definitive are the same `dateLast`. The full store tuple and time unit are
  * pinned because they are the leading columns of the source primary key; a
- * workspace-wide grouped MAX needlessly scans the multi-million-row table.
+ * workspace-wide grouped MAX needlessly scans the whole table.
  */
 export function searchQueryPerformanceFreshnessQuery(
 	stores: readonly StoreRef[],

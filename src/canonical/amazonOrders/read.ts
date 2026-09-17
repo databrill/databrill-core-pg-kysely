@@ -1,5 +1,13 @@
 import { Effect, Either } from "effect";
-import { type AliasedRawBuilder, type CompiledQuery, type Expression, type Kysely, type RawBuilder, sql } from "kysely";
+import {
+	type AliasedRawBuilder,
+	type CompiledQuery,
+	type Expression,
+	expressionBuilder,
+	type Kysely,
+	type RawBuilder,
+	sql,
+} from "kysely";
 import { tryOrOperationError } from "../../tryOrOperationError.ts";
 import type { DB } from "../../types.ts";
 import {
@@ -248,59 +256,11 @@ function ordersQuery(db: Kysely<DB>, params: OrdersLevelQueryParams) {
 		)
 		.$if(needsFamily, (qb) => qb.leftJoin("brand_config_amazon_asin as f", "f.asin", "o.asin"))
 		.leftJoinLateral(
-			(eb) =>
-				eb
-					.selectFrom("fx_ecb_rate_history as fromFxRows")
-					.select("fromFxRows.value as value")
-					.where("fromFxRows.timeFormat", "=", "P1D")
-					.where(sql<boolean>`${sql.ref("fromFxRows.unit")} = ${sourceCurrency}`)
-					.orderBy(
-						sql`CASE WHEN ${sql.ref("fromFxRows.period")} <= ${
-							sql.ref("o.localdate")
-						}::text THEN 0 ELSE 1 END`,
-					)
-					.orderBy(
-						sql`CASE WHEN ${sql.ref("fromFxRows.period")} <= ${sql.ref("o.localdate")}::text THEN ${
-							sql.ref("fromFxRows.period")
-						} END`,
-						"desc",
-					)
-					.orderBy(
-						sql`CASE WHEN ${sql.ref("fromFxRows.period")} > ${sql.ref("o.localdate")}::text THEN ${
-							sql.ref("fromFxRows.period")
-						} END`,
-						"asc",
-					)
-					.limit(1)
-					.as("fromFx"),
+			db.selectNoFrom(fxRateExpression(sourceCurrency).as("value")).as("fromFx"),
 			(join) => join.onTrue(),
 		)
 		.leftJoinLateral(
-			(eb) =>
-				eb
-					.selectFrom("fx_ecb_rate_history as toFxRows")
-					.select("toFxRows.value as value")
-					.where("toFxRows.timeFormat", "=", "P1D")
-					.where(sql<boolean>`${sql.ref("toFxRows.unit")} = ${targetCurrency}`)
-					.orderBy(
-						sql`CASE WHEN ${sql.ref("toFxRows.period")} <= ${
-							sql.ref("o.localdate")
-						}::text THEN 0 ELSE 1 END`,
-					)
-					.orderBy(
-						sql`CASE WHEN ${sql.ref("toFxRows.period")} <= ${sql.ref("o.localdate")}::text THEN ${
-							sql.ref("toFxRows.period")
-						} END`,
-						"desc",
-					)
-					.orderBy(
-						sql`CASE WHEN ${sql.ref("toFxRows.period")} > ${sql.ref("o.localdate")}::text THEN ${
-							sql.ref("toFxRows.period")
-						} END`,
-						"asc",
-					)
-					.limit(1)
-					.as("toFx"),
+			db.selectNoFrom(fxRateExpression(targetCurrency).as("value")).as("toFx"),
 			(join) => join.onTrue(),
 		)
 		.where("s.isReal", "=", true)
@@ -325,6 +285,32 @@ function ordersQuery(db: Kysely<DB>, params: OrdersLevelQueryParams) {
 			(params.request.families ?? []).length > 0,
 			(qb) => qb.where(familyExpression(), "in", params.request.families ?? []),
 		);
+}
+
+/**
+ * The daily ECB rate of `currency` for the order date: the newest rate on or
+ * before it, else the oldest rate after it.
+ *
+ * Each side is one probe of the primary key `(unit, "timeFormat", period)`.
+ * `unit` is CHAR(3); the currency is cast to its type because comparing it as
+ * text would cast the column instead and read the whole table per order line.
+ */
+function fxRateExpression(currency: RawBuilder<unknown>): RawBuilder<number> {
+	const rates = expressionBuilder<DB, never>()
+		.selectFrom("fx_ecb_rate_history as fx")
+		.select("fx.value")
+		.where("fx.timeFormat", "=", "P1D")
+		.where(sql<boolean>`${sql.ref("fx.unit")} = (${currency})::bpchar`);
+	const orderDate = sql`${sql.ref("o.localdate")}::text`;
+	const onOrBefore = rates
+		.where(sql<boolean>`${sql.ref("fx.period")} <= ${orderDate}`)
+		.orderBy("fx.period", "desc")
+		.limit(1);
+	const after = rates
+		.where(sql<boolean>`${sql.ref("fx.period")} > ${orderDate}`)
+		.orderBy("fx.period", "asc")
+		.limit(1);
+	return sql<number>`COALESCE(${onOrBefore}, ${after})`;
 }
 
 function withGrouping<

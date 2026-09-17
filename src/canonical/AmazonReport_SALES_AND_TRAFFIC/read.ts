@@ -34,9 +34,9 @@ import { AMAZON_REPORT_SALES_AND_TRAFFIC } from "./declaration.ts";
  *
  * 1. EVERY LEVEL AGGREGATES FROM THE SOURCE GRAIN. There is no roll-up chain.
  *    `PARENT_ASIN` is marketplace-split while `ASIN` directly beneath it is not,
- *    and one ASIN sits under different parents in different marketplaces, so
- *    producing `PARENT_ASIN` by re-aggregating `ASIN` rows gives wrong answers
- *    for most of a real catalogue.
+ *    and one ASIN can sit under different parents in different marketplaces, so
+ *    producing `PARENT_ASIN` by re-aggregating `ASIN` rows gives a wrong answer
+ *    for every ASIN that does.
  * 2. THE STORE LEVELS READ A DIFFERENT RELATION. Sessions do not add over
  *    products, so the storefront total is read from Amazon's own storefront-wide
  *    report rather than summed up from SKUs. The two families therefore do not
@@ -179,8 +179,8 @@ export function readAmazonReportSalesAndTraffic(
 				source: source.key,
 				relation: source.relation,
 				rule: "Latest date whose row count reaches half the median of the store's 14 most recent present " +
-					"dates. The failure mode is a placeholder day with a handful of rows, which a row-count floor " +
-					"catches and a fixed lag does not.",
+					"dates. The failure mode is a placeholder day whose row count has collapsed, which a row-count " +
+					"floor catches and a fixed lag does not.",
 				query: skuByDayFreshnessQuery(stores),
 			});
 
