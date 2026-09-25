@@ -89,7 +89,7 @@ const AMAZON_ORDERS: CanonicalDeclaration = {
 			keyColumns: ["family"],
 			source: "orders",
 			note: "Family is resolved per (ASIN, country) through countryToFamily. Unconfigured ASINs use " +
-				"the (unmapped) bucket.",
+				"the MISSING bucket.",
 		},
 		{
 			level: "PARENT_ASIN",

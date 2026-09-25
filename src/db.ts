@@ -702,6 +702,39 @@ export interface DbTable_amazon_store {
 }
 
 /**
+ * One row per Amazon Vendor store and marketplace, holding the Advertising API
+ * profile a person assigned to it by hand. entityId is that profile's ENTITY
+ * id, which the advertising report tables carry in their merchantId column for
+ * a Vendor profile, so a query joins a Vendor store to its advertising rows
+ * through this table. entityId IS NULL means no profile is assigned (an
+ * assignment was removed); readers filter entityId IS NOT NULL.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amazon_vendor_adapi_profile {
+	/**
+	 * When this assignment was first recorded
+	 */
+	createdAt: InstantColumn;
+	/**
+	 * The assigned Advertising API profile's ENTITY id. It is the value the advertising report tables carry in their `merchantId` column for a Vendor profile, so joining on it connects a Vendor store to its advertising rows. NULL means no profile is assigned (the assignment was removed); filter `entityId IS NOT NULL`
+	 */
+	entityId: string | null;
+	/**
+	 * Amazon marketplace ID of the marketplace the assignment is for
+	 */
+	marketplaceId: string;
+	/**
+	 * The Amazon Vendor store's id (`amzn1.vg.…`), the same value `amazon_store.merchantId` carries for that store
+	 */
+	merchantId: string;
+	/**
+	 * When this row last changed, including a removal that set `entityId` to NULL
+	 */
+	updatedAt: InstantColumn;
+}
+
+/**
  * Amazon Ads program eligibility per (merchant, marketplace, program), with
  * the eligibility flag and any reasons Amazon gave for ineligibility.
  *
@@ -1197,19 +1230,27 @@ export interface DbTable_amzadapi_reports_v1__search_asin_placement__byDay {
 }
 
 /**
- * Materialized P&L order-item atom: one row per (merchantId, marketplaceId,
+ * Materialized P&L order-item rows: one row per (merchantId, marketplaceId,
  * kind, orderId, sku, sourceKey). A product total is a fold of these rows.
- * Money is signed as it contributes to profit; gross profit, net profit,
- * margin, ROI and unit price are derived at read time and deliberately not
- * stored.
+ * Money is signed as it contributes to profit; the Amazon fee
+ * (amazonFeesSettled + amazonFeesEstimated), gross profit, net profit, margin,
+ * ROI and unit price are derived at read time and deliberately not stored.
  *
  * Read-only: it is not in `WritableDB`.
  */
 export interface DbTable_amzagg_profit__orderItem {
 	/**
-	 * Amazon order-item fees, negative. Settled from SETTLEMENT_V2 when a settlement has posted, otherwise forecast from the FBA fee preview; feesEstimated says which.
+	 * Fee-preview forecast for the line's units Amazon has not charged yet, negative; 0 when every unit is charged and on every non-sale row. Replaced by settled fees when a rebuild finds the charge, never on an age threshold.
 	 */
-	amazonFees: number;
+	amazonFeesEstimated: number;
+	/**
+	 * How many of the line's units amazonFeesEstimated covers: units minus the units the settled fees cover, floored at 0. The settled units are the largest, over fee kinds, of the summed quantity_purchased on the line's fee rows. 0 on a fully charged line, all of units on a line with no charges yet.
+	 */
+	amazonFeesEstimatedUnits: number;
+	/**
+	 * What Amazon actually charged for the line in SETTLEMENT_V2 ItemFees, negative; 0 when nothing has been charged yet and on every non-sale row. The line's Amazon fee is amazonFeesSettled + amazonFeesEstimated; no column stores the sum.
+	 */
+	amazonFeesSettled: number;
 	/**
 	 * ASIN as reported by the source, or null when it is unknown
 	 */
@@ -1235,23 +1276,19 @@ export interface DbTable_amzagg_profit__orderItem {
 	 */
 	dateOrder: PlainDateColumn | null;
 	/**
-	 * True when amazonFees is a fee-preview forecast rather than a settled amount. The row is retired and recomputed when the real event arrives, never on an age threshold.
-	 */
-	feesEstimated: boolean;
-	/**
 	 * Fulfilment channel normalized to FBA or FBM; null when the source does not report one
 	 */
 	fulfillment: string | null;
 	/**
-	 * Which atom this is, and therefore which date books it: sale | refund | adjustment
+	 * Which kind of order-item row this is, and therefore which date books it: sale | refund | adjustment
 	 */
 	kind: string;
 	/**
-	 * Marketplace the atom is attributed to. On refund and adjustment rows this is an attribution, possibly the writer's single-marketplace context default, not a fact reported by the source.
+	 * Marketplace the row is attributed to. On refund and adjustment rows this is an attribution, possibly the writer's single-marketplace context default, not a fact reported by the source.
 	 */
 	marketplaceId: string;
 	/**
-	 * Amazon Seller ID that owns the atom
+	 * Amazon Seller ID that owns the row
 	 */
 	merchantId: string;
 	/**
@@ -1362,7 +1399,7 @@ export interface DbTable_amzagg_profit__orderItemProjectionState {
 	 */
 	projectionVersion: number;
 	/**
-	 * Atoms written by the last completed rebuild of this merchant
+	 * Order-item rows written by the last completed rebuild of this merchant
 	 */
 	rowCount: number;
 	/**
@@ -6971,6 +7008,7 @@ export interface DB {
 	amazon_product_type_keyword: DbTable_amazon_product_type_keyword;
 	amazon_sales_and_traffic: DbView_amazon_sales_and_traffic;
 	amazon_store: DbTable_amazon_store;
+	amazon_vendor_adapi_profile: DbTable_amazon_vendor_adapi_profile;
 	amzadapi_eligibility_v1__program: DbTable_amzadapi_eligibility_v1__program;
 	amzadapi_exports_v1__ad: DbTable_amzadapi_exports_v1__ad;
 	amzadapi_exports_v1__adgroup: DbTable_amzadapi_exports_v1__adgroup;

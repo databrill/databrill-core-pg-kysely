@@ -81,6 +81,8 @@ export {
 	type StoreRef,
 } from "./freshness.ts";
 
+export { MISSING_FAMILY } from "./missingFamily.ts";
+
 export { probeRelations } from "./relations.ts";
 
 export {

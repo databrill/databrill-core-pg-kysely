@@ -23,6 +23,7 @@ import {
 } from "../declaration.ts";
 import { type CanonicalQueryRunner, executeCompiled } from "../execute.ts";
 import { ordersFreshnessQuery, readFreshness, type SourceFreshness, type StoreRef } from "../freshness.ts";
+import { MISSING_FAMILY } from "../missingFamily.ts";
 import { probeRelations } from "../relations.ts";
 import { type CanonicalResolvedWindow, type CanonicalWindow, resolveCanonicalWindow } from "../window.ts";
 import { AMAZON_ORDERS } from "./declaration.ts";
@@ -63,8 +64,6 @@ export interface AmazonOrdersResult {
 	readonly unavailable: readonly CanonicalUnavailability[];
 	readonly rows: readonly AmazonOrdersRow[];
 }
-
-const UNMAPPED_FAMILY = "(unmapped)";
 
 /** Read `AmazonOrders` at one declared level. */
 export function readAmazonOrders(
@@ -402,7 +401,7 @@ function keyExpression(column: string, currency: RawBuilder<unknown>): Either.Ei
 
 function familyExpression(): RawBuilder<unknown> {
 	return sql`COALESCE(${sql.ref("f.countryToFamily")}->>${sql.ref("m.country_code")}, ${sql.ref("f.family")}, ${
-		sql.lit(UNMAPPED_FAMILY)
+		sql.lit(MISSING_FAMILY)
 	})`;
 }
 

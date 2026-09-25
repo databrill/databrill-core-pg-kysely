@@ -82,7 +82,7 @@ export const AMAZON_REPORT_SALES_AND_TRAFFIC: CanonicalDeclaration = {
 			source: "skuByDay",
 			note: "The family is resolved per (ASIN, country) through countryToFamily before grouping, so a " +
 				"cross-country roll-up honours a per-country family override. ASINs with no family " +
-				"resolve to the (unmapped) bucket rather than disappearing.",
+				"resolve to the MISSING bucket rather than disappearing.",
 		},
 		{
 			level: "PARENT_ASIN",
@@ -362,9 +362,9 @@ export const AMAZON_REPORT_SALES_AND_TRAFFIC: CanonicalDeclaration = {
 			appliesToLevels: ["SUM", "MERCHANT", "COUNTRY", "STORE", "FAMILY", "PARENT_ASIN", "ASIN", "SKU"],
 		},
 		{
-			code: "UNMAPPED_FAMILY_BUCKET",
+			code: "MISSING_FAMILY_BUCKET",
 			statement: "An ASIN the customer has not assigned to a family is reported under the family " +
-				"(unmapped) rather than dropped, so a FAMILY roll-up still totals to the same sessions as " +
+				"MISSING rather than dropped, so a FAMILY roll-up still totals to the same sessions as " +
 				"the ASIN level beneath it.",
 			appliesToLevels: ["FAMILY"],
 		},

@@ -24,6 +24,7 @@ import { keyColumnsForMeasures, measuresForLevel } from "../../src/canonical/dec
 import { AMAZON_REPORT_SALES_AND_TRAFFIC } from "../../src/canonical/AmazonReport_SALES_AND_TRAFFIC/declaration.ts";
 import { compileLevelQuery, type LevelQueryParams } from "../../src/canonical/AmazonReport_SALES_AND_TRAFFIC/read.ts";
 import { skuByDayFreshnessQuery, storeFreshnessQuery } from "../../src/canonical/freshness.ts";
+import { MISSING_FAMILY } from "../../src/canonical/missingFamily.ts";
 
 const db = createCanonicalQueryBuilder();
 const WINDOW = { dateFirst: "2026-08-01", dateLast: "2026-08-14" } as const;
@@ -98,8 +99,8 @@ Deno.test("canonical - the family is resolved per country before grouping", () =
 	// `countryToFamily` is a per-country override map, so reading the flat
 	// `family` column alone reports the wrong family wherever an override exists.
 	assertStringIncludes(compiled.sql, `"countryToFamily"->>"s"."countryCode"`);
-	assertStringIncludes(compiled.sql, `'(unmapped)'`);
-	// The join is a LEFT join, so an unconfigured ASIN lands in the (unmapped)
+	assertStringIncludes(compiled.sql, `'${MISSING_FAMILY}'`);
+	// The join is a LEFT join, so an unconfigured ASIN lands in the MISSING
 	// bucket instead of vanishing from the roll-up.
 	assertStringIncludes(compiled.sql, `left join "brand_config_amazon_asin"`);
 });

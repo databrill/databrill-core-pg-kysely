@@ -41,6 +41,7 @@ export const TABLE_NAMES = [
 	"amazon_merchant",
 	"amazon_product_type_keyword",
 	"amazon_store",
+	"amazon_vendor_adapi_profile",
 	"amzadapi_eligibility_v1__program",
 	"amzadapi_exports_v1__ad",
 	"amzadapi_exports_v1__adgroup",

@@ -21,6 +21,7 @@ import {
 	storeFreshnessQuery,
 	type StoreRef,
 } from "../freshness.ts";
+import { MISSING_FAMILY } from "../missingFamily.ts";
 import { probeRelations } from "../relations.ts";
 import { type CanonicalResolvedWindow, type CanonicalWindow, resolveCanonicalWindow } from "../window.ts";
 import { AMAZON_REPORT_SALES_AND_TRAFFIC } from "./declaration.ts";
@@ -86,9 +87,6 @@ export interface AmazonReportSalesAndTrafficResult {
 	readonly unavailable: readonly CanonicalUnavailability[];
 	readonly rows: readonly AmazonReportSalesAndTrafficRow[];
 }
-
-/** The family bucket an ASIN with no configured family falls into. */
-const UNMAPPED_FAMILY = "(unmapped)";
 
 /**
  * Read `AmazonReport_SALES_AND_TRAFFIC` at one level.
@@ -480,7 +478,7 @@ function keyExpression(sourceKey: string, column: string): Either.Either<RawBuil
  * exists. Resolving per (ASIN, country) BEFORE grouping means a cross-country
  * roll-up still groups each row under the family that row's country assigns.
  *
- * The fallback to `(unmapped)` is what stops an unconfigured ASIN from vanishing
+ * The fallback to `MISSING_FAMILY` is what stops an unconfigured ASIN from vanishing
  * from a FAMILY roll-up: the resolved view `brand_ontology_amazon_asin` lists
  * only ASINs that resolve to a variant or a family and is therefore not a
  * complete ASIN list, which is why this joins the base configuration table
@@ -488,7 +486,7 @@ function keyExpression(sourceKey: string, column: string): Either.Either<RawBuil
  */
 function familyExpression(): RawBuilder<unknown> {
 	return sql`COALESCE(${sql.ref("f.countryToFamily")}->>${sql.ref("s.countryCode")}, ${sql.ref("f.family")}, ${
-		sql.lit(UNMAPPED_FAMILY)
+		sql.lit(MISSING_FAMILY)
 	})`;
 }
 
