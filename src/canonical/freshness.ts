@@ -310,7 +310,7 @@ function freshnessQuery(shape: FreshnessShape): RawBuilder<FreshnessRow> {
 }
 
 /** Run a freshness query and fold the rows into a {@link SourceFreshness}. */
-export function readFreshness(
+export function loadFreshness(
 	db: Kysely<DB>,
 	runner: CanonicalQueryRunner,
 	params: {

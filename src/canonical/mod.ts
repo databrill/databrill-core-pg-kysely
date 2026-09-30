@@ -23,14 +23,14 @@
  * import {
  * 	AMAZON_REPORT_SALES_AND_TRAFFIC,
  * 	createCanonicalQueryBuilder,
+ * 	loadAmazonReportSalesAndTraffic,
  * 	makePostgresJsTypes,
- * 	readAmazonReportSalesAndTraffic,
  * } from "@databrill/core-pg-kysely/canonical";
  *
  * const sql = postgres(uri, { types: makePostgresJsTypes() });
  * const db = createCanonicalQueryBuilder();
  *
- * const result = await Effect.runPromise(readAmazonReportSalesAndTraffic(db, sql, {
+ * const result = await Effect.runPromise(loadAmazonReportSalesAndTraffic(db, sql, {
  * 	level: "ASIN",
  * 	timeGranularity: "DAY",
  * 	window: { kind: "trailingDays", days: 7 },
@@ -99,32 +99,32 @@ export {
 	type AmazonOrdersRequest,
 	type AmazonOrdersResult,
 	type AmazonOrdersRow,
-	readAmazonOrders,
-} from "./amazonOrders/read.ts";
+	loadAmazonOrders,
+} from "./amazonOrders/load.ts";
 
 export { AMAZON_COUNTRY } from "./AmazonCountry/declaration.ts";
 export {
 	type AmazonCountryRequest,
 	type AmazonCountryResult,
 	type AmazonCountryRow,
-	readAmazonCountries,
-} from "./AmazonCountry/read.ts";
+	loadAmazonCountries,
+} from "./AmazonCountry/load.ts";
 
 export { AMAZON_MARKETPLACE } from "./AmazonMarketplace/declaration.ts";
 export {
 	type AmazonMarketplaceRequest,
 	type AmazonMarketplaceResult,
 	type AmazonMarketplaceRow,
-	readAmazonMarketplaces,
-} from "./AmazonMarketplace/read.ts";
+	loadAmazonMarketplaces,
+} from "./AmazonMarketplace/load.ts";
 
 export { AMAZON_REPORT_SALES_AND_TRAFFIC } from "./AmazonReport_SALES_AND_TRAFFIC/declaration.ts";
 export {
 	type AmazonReportSalesAndTrafficRequest,
 	type AmazonReportSalesAndTrafficResult,
 	type AmazonReportSalesAndTrafficRow,
-	readAmazonReportSalesAndTraffic,
-} from "./AmazonReport_SALES_AND_TRAFFIC/read.ts";
+	loadAmazonReportSalesAndTraffic,
+} from "./AmazonReport_SALES_AND_TRAFFIC/load.ts";
 
 export { AMAZON_REPORT_SEARCH_QUERY_PERFORMANCE } from "./AmazonReport_SEARCH_QUERY_PERFORMANCE/declaration.ts";
 export {
@@ -134,6 +134,6 @@ export {
 	type AmazonReportSearchQueryPerformanceRow,
 	type AmazonReportSearchQueryPerformanceTimeGranularity,
 	type AmazonReportSearchQueryPerformanceTimeUnit,
-	readAmazonReportSearchQueryPerformance,
+	loadAmazonReportSearchQueryPerformance,
 	SEARCH_QUERY_PERFORMANCE_TIME_UNITS,
-} from "./AmazonReport_SEARCH_QUERY_PERFORMANCE/read.ts";
+} from "./AmazonReport_SEARCH_QUERY_PERFORMANCE/load.ts";

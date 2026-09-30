@@ -30,8 +30,8 @@ export interface AmazonMarketplaceResult {
 	readonly rows: readonly AmazonMarketplaceRow[];
 }
 
-/** Read Amazon marketplace reference rows. */
-export function readAmazonMarketplaces(
+/** Load Amazon marketplace reference rows. */
+export function loadAmazonMarketplaces(
 	db: Kysely<DB>,
 	runner: CanonicalQueryRunner,
 	request: AmazonMarketplaceRequest = {},

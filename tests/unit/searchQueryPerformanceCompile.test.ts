@@ -11,7 +11,7 @@ import {
 	type AmazonReportSearchQueryPerformanceLevel,
 	compileSearchQueryPerformanceQuery,
 	type SearchQueryPerformanceQueryParams,
-} from "../../src/canonical/AmazonReport_SEARCH_QUERY_PERFORMANCE/read.ts";
+} from "../../src/canonical/AmazonReport_SEARCH_QUERY_PERFORMANCE/load.ts";
 
 const db = createCanonicalQueryBuilder();
 const WINDOW = { dateFirst: "2026-07-01", dateLast: "2026-07-31" } as const;

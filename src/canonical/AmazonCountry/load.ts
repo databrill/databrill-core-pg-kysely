@@ -25,8 +25,8 @@ export interface AmazonCountryResult {
 	readonly rows: readonly AmazonCountryRow[];
 }
 
-/** Read Amazon country reference rows. */
-export function readAmazonCountries(
+/** Load Amazon country reference rows. */
+export function loadAmazonCountries(
 	db: Kysely<DB>,
 	runner: CanonicalQueryRunner,
 	request: AmazonCountryRequest = {},

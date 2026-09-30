@@ -22,7 +22,7 @@ import { createCanonicalQueryBuilder, makePostgresJsTypes } from "../../src/cano
 import { pgTypeParsers } from "../../src/pgTypeParsers.ts";
 import { keyColumnsForMeasures, measuresForLevel } from "../../src/canonical/declaration.ts";
 import { AMAZON_REPORT_SALES_AND_TRAFFIC } from "../../src/canonical/AmazonReport_SALES_AND_TRAFFIC/declaration.ts";
-import { compileLevelQuery, type LevelQueryParams } from "../../src/canonical/AmazonReport_SALES_AND_TRAFFIC/read.ts";
+import { compileLevelQuery, type LevelQueryParams } from "../../src/canonical/AmazonReport_SALES_AND_TRAFFIC/load.ts";
 import { skuByDayFreshnessQuery, storeFreshnessQuery } from "../../src/canonical/freshness.ts";
 import { MISSING_FAMILY } from "../../src/canonical/missingFamily.ts";
 

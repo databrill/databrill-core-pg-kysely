@@ -1230,6 +1230,142 @@ export interface DbTable_amzadapi_reports_v1__search_asin_placement__byDay {
 }
 
 /**
+ * Advertising cost per store, ad day and ad product, summed from the daily ad
+ * report. The day is the ad report's day in the ads account's time zone, as
+ * Amazon reports it.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzagg_profit__adsDay {
+	/**
+	 * Advertising cost of the day, negative: the report's totalCost, negated
+	 */
+	adCost: number;
+	/**
+	 * Ad product as the ad report names it (Sponsored Products, ...)
+	 */
+	adProduct: string;
+	/**
+	 * The report's budget currency, the currency of adCost
+	 */
+	currency: string;
+	/**
+	 * The ad report's day, YYYY-MM-DD, in the ads account's time zone as Amazon reports it
+	 */
+	dateAd: PlainDateColumn;
+	/**
+	 * True once a report covering the day arrived that was requested at least 15 days after it
+	 */
+	isFinal: boolean;
+	/**
+	 * Marketplace of the store
+	 */
+	marketplaceId: string;
+	/**
+	 * Amazon Seller ID of the store
+	 */
+	merchantId: string;
+	/**
+	 * Report rows summed into this row
+	 */
+	rowCount: number;
+}
+
+/**
+ * Running estimate of advertising cost per store, booking day and ad product
+ * from the Marketing Stream traffic events, each distinct event added once.
+ * Readers use amzagg_profit__adsDay for a day when it has one, else this
+ * estimate.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzagg_profit__adsStreamDay {
+	/**
+	 * Advertising cost of the events summed here, negative
+	 */
+	adCost: number;
+	/**
+	 * Ad product, spelled as amzagg_profit__adsDay spells it
+	 */
+	adProduct: string;
+	/**
+	 * Currency of adCost, as the events report it
+	 */
+	currency: string;
+	/**
+	 * YYYY-MM-DD: the local day, in the merchant's booking time zone, of the hourly window start of the events summed here
+	 */
+	dateBooked: PlainDateColumn;
+	/**
+	 * Distinct stream events summed into this row
+	 */
+	eventCount: number;
+	/**
+	 * Marketplace of the store
+	 */
+	marketplaceId: string;
+	/**
+	 * Amazon Seller ID of the store
+	 */
+	merchantId: string;
+	/**
+	 * The latest hourly window start among the events summed here
+	 */
+	windowStartLastAt: InstantColumn;
+}
+
+/**
+ * Account-level Amazon charges per store and posting day: the settlement rows
+ * the P&L counts as expenses, which are not order or refund rows, not the
+ * reserve, not advertising and not reimbursement reversals or clawbacks.
+ * Negative amounts only, summed per charge type and shipment.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzagg_profit__expenseDay {
+	/**
+	 * Sum of the settlement rows' amounts, negative: a charge
+	 */
+	amount: number;
+	/**
+	 * The settlement row's amount description; the empty string when it has none
+	 */
+	amountDescription: string;
+	/**
+	 * The settlement row's amount type; the empty string when it has none
+	 */
+	amountType: string;
+	/**
+	 * The settlement's currency, the currency of amount
+	 */
+	currency: string;
+	/**
+	 * YYYY-MM-DD: the local day of the settlement row's posted time in the merchant's booking time zone, the zone amzagg_profit__orderItem.dateBooked uses.
+	 */
+	datePosted: PlainDateColumn;
+	/**
+	 * The marketplace the settlement row's marketplace name maps to, when it maps to exactly one; the empty string otherwise.
+	 */
+	marketplaceId: string;
+	/**
+	 * Amazon Seller ID that was charged
+	 */
+	merchantId: string;
+	/**
+	 * Settlement rows summed into this row
+	 */
+	rowCount: number;
+	/**
+	 * The settlement row's shipment id; the empty string when it has none. An inbound shipment's charges carry its shipment id: FBA... for an FBA shipment, STAR-... for an AWD one.
+	 */
+	shipmentId: string;
+	/**
+	 * The settlement row's transaction type, never Order or Refund
+	 */
+	transactionType: string;
+}
+
+/**
  * Materialized P&L order-item rows: one row per (merchantId, marketplaceId,
  * kind, orderId, sku, sourceKey). A product total is a fold of these rows.
  * Money is signed as it contributes to profit; the Amazon fee
@@ -1332,9 +1468,17 @@ export interface DbTable_amzagg_profit__orderItem {
 	 */
 	sales: number;
 	/**
+	 * Positive base a reader applies its own VAT rate to: item_price + shipping_price + gift_wrap_price (gross of the shipping promotion) when the report carries no VAT-exclusive item price, else 0. Not a profit amount. 0 on every non-sale row. The line's VAT is vatReported - salesMissingVatExclusive * rate / (1 + rate).
+	 */
+	salesMissingVatExclusive: number;
+	/**
 	 * Of returnedUnits, those that came back SELLABLE and are credited back to COGS
 	 */
 	sellableReturnUnits: number;
+	/**
+	 * Ship-to country of the order line as the order report states it; null when the report has none and on every non-sale row. A refund or return reaches a country through its sale row.
+	 */
+	shipCountry: string | null;
 	/**
 	 * Seller-paid shipping (FBM), negative; not modelled yet, always 0
 	 */
@@ -1348,7 +1492,7 @@ export interface DbTable_amzagg_profit__orderItem {
 	 */
 	sku: string;
 	/**
-	 * Discriminator carrying the source aggregate's remaining GROUP BY columns, built with makeCompositeKey: empty on a sale; (dateBooked, currency) on a refund; (return:, dateBooked) or (reimb:, dateBooked, currency, reason) on an adjustment. It makes the primary key unique per source aggregate, not per real-world event.
+	 * Discriminator carrying the source aggregate's remaining GROUP BY columns, built with makeCompositeKey: empty on a sale; the refund id on a refund; (return:, dateBooked) or (reimb:, dateBooked, currency, reason) on an adjustment. It makes the primary key unique per source aggregate, not per real-world event.
 	 */
 	sourceKey: string;
 	/**
@@ -1356,11 +1500,324 @@ export interface DbTable_amzagg_profit__orderItem {
 	 */
 	title: string | null;
 	/**
-	 * Resolved landed unit cost as of the projection's as-of date, or null when no UNIT_COGS attribute covers the sku. Not derivable from cogs, which is 0 on a zero-unit row.
+	 * Landed unit cost as of the row's booked date, in the row's currency; on a customer return, the cost its sale line was charged. Null when no UNIT_COGS attribute covers the sku. Not derivable from cogs, which is 0 on a zero-unit row.
 	 */
 	unitCogs: number | null;
 	/**
 	 * Units sold on this line; 0 on refund and adjustment rows
+	 */
+	units: number;
+	/**
+	 * VAT the order report states for the line's item price, negative: -(item_price - vat_exclusive_item_price) when the report carries a VAT-exclusive item price, else 0. Item price only; 0 on every non-sale row.
+	 */
+	vatReported: number;
+}
+
+/**
+ * Record of source changes that reach closed P&L order-item history (rows
+ * booked before the open period): per merchant, source kind, date range and
+ * SKU, when it was seen, how many rows and how much gross profit it moves, and
+ * when it was repaired.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzagg_profit__orderItemClosedChange {
+	/**
+	 * First booked day the change may alter, YYYY-MM-DD
+	 */
+	dateFirst: PlainDateColumn;
+	/**
+	 * Last booked day the change may alter, inclusive, YYYY-MM-DD
+	 */
+	dateLast: PlainDateColumn;
+	/**
+	 * When the entry was first recorded
+	 */
+	firstSeenAt: InstantColumn;
+	/**
+	 * flag: a source writer's change or the recalculation's own upkeep recorded it; monthlyCheck: only the nightly comparison of a closed month found it.
+	 */
+	foundBy: string;
+	/**
+	 * When the entry was last recorded again
+	 */
+	lastSeenAt: InstantColumn;
+	/**
+	 * Amazon Seller ID whose closed rows may differ
+	 */
+	merchantId: string;
+	/**
+	 * Sum of the absolute change of gross profit of those rows, in each row's currency; null until priced
+	 */
+	moneyAbs: number | null;
+	/**
+	 * Sum of the signed change of gross profit of those rows; null until priced
+	 */
+	moneySigned: number | null;
+	/**
+	 * When the nightly run last priced the entry; null when not priced since last seen
+	 */
+	pricedAt: InstantColumn | null;
+	/**
+	 * When the repair last rewrote the entry's dates; null when not repaired since last seen
+	 */
+	repairedAt: InstantColumn | null;
+	/**
+	 * Order-item rows of the entry's dates that differ from a fresh calculation, title-only differences excluded; null until priced.
+	 */
+	rowsDiffering: number | null;
+	/**
+	 * How many times the entry was recorded
+	 */
+	seenCount: number;
+	/**
+	 * The SKU the change is limited to; the empty string when it names none
+	 */
+	sku: string;
+	/**
+	 * The kind of source change that reaches these dates; returnCredit: returns whose sale line's cost a repair changed; unknown: a difference only the monthly comparison found.
+	 */
+	sourceKind: string;
+}
+
+/**
+ * Per merchant: the projection version, booking time zone and date range of
+ * the P&L order-item context last written, the month of closed history the
+ * nightly check compared last, and the zone the stream-estimate and expense
+ * days were last rebuilt in.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzagg_profit__orderItemContextMerchant {
+	/**
+	 * First day of the closed month the nightly run compared last, YYYY-MM-DD; null before the first comparison.
+	 */
+	dateClosedCheckLast: PlainDateColumn | null;
+	/**
+	 * First booked day of the calculation that wrote the context, YYYY-MM-DD
+	 */
+	dateFirst: PlainDateColumn;
+	/**
+	 * Last booked day of the calculation that wrote the context, YYYY-MM-DD
+	 */
+	dateLast: PlainDateColumn;
+	/**
+	 * Amazon Seller ID; the whole primary key
+	 */
+	merchantId: string;
+	/**
+	 * Projection version of the calculation that wrote the context
+	 */
+	projectionVersion: number;
+	/**
+	 * The merchant's booking time zone: the IANA zone its order-item rows' dateBooked is local to
+	 */
+	timeZone: string;
+	/**
+	 * When the row was last written
+	 */
+	updatedAt: InstantColumn;
+	/**
+	 * The booking time zone amzagg_profit__adsStreamDay and amzagg_profit__expenseDay were last rebuilt in for the open period; null before the first rebuild. While it differs from timeZone, the next order-item recalculation rebuilds them.
+	 */
+	zoneDaysTimeZone: string | null;
+}
+
+/**
+ * Per-SKU context of the P&L order-item fast path: fee-preview fields and the
+ * listing title, written by the order-item recalculation from its own
+ * calculation, only the rows that changed.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzagg_profit__orderItemContextSku {
+	/**
+	 * The asin the title was resolved for; a line with another asin resolves its own
+	 */
+	asin: string | null;
+	/**
+	 * False when the fee preview has no row for the SKU (no estimate, not a zero one)
+	 */
+	hasEstimate: boolean;
+	/**
+	 * Marketplace of the SKU
+	 */
+	marketplaceId: string;
+	/**
+	 * Amazon Seller ID
+	 */
+	merchantId: string;
+	/**
+	 * Order handling fee per order, from the fee preview
+	 */
+	perOrder: number;
+	/**
+	 * Fulfilment and variable closing fee per unit, from the fee preview
+	 */
+	perUnit: number;
+	/**
+	 * Referral fee per unit at the fee preview's price, the fallback to the rate
+	 */
+	referralPerUnit: number;
+	/**
+	 * Referral fee as a fraction of net revenue, from the fee preview; null when no price backs it out
+	 */
+	referralRate: number | null;
+	/**
+	 * Seller SKU
+	 */
+	sku: string;
+	/**
+	 * The title an order-item row of this SKU and asin carries; null when none is known
+	 */
+	title: string | null;
+}
+
+/**
+ * Landed unit cost of each SKU as intervals of days, as the P&L order-item
+ * recalculation resolved its UNIT_COGS attributes; the fast path costs each
+ * sale line at its own day from it.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzagg_profit__orderItemCostTimeline {
+	/**
+	 * The asin the cost was resolved for; the empty string when unknown
+	 */
+	asin: string;
+	/**
+	 * Currency of unitCost; null means the marketplace's own currency
+	 */
+	costCurrency: string | null;
+	/**
+	 * Uppercase country code of the marketplace the cost applies in
+	 */
+	country: string;
+	/**
+	 * First day the cost applies, YYYY-MM-DD
+	 */
+	dateFirst: PlainDateColumn;
+	/**
+	 * Last day the cost applies, inclusive, YYYY-MM-DD; null while it is open
+	 */
+	dateLast: PlainDateColumn | null;
+	/**
+	 * Amazon Seller ID
+	 */
+	merchantId: string;
+	/**
+	 * Seller SKU
+	 */
+	sku: string;
+	/**
+	 * Landed cost of one unit, in costCurrency
+	 */
+	unitCost: number;
+}
+
+/**
+ * Per-store, per-day sums of amzagg_profit__orderItem: one row per merchant,
+ * marketplace, currency and booked day, rows with no marketplace summed on
+ * their own per currency. Kept by the same transactions that write the
+ * order-item rows. Money sums are exact to six decimals.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzagg_profit__orderItemDay {
+	/**
+	 * Sum of amazonFeesEstimated: fee-preview forecast, negative
+	 */
+	amazonFeesEstimated: number;
+	/**
+	 * Sum of amazonFeesEstimatedUnits: sold units whose fees are still a forecast
+	 */
+	amazonFeesEstimatedUnits: number;
+	/**
+	 * Sum of amazonFeesSettled: fees Amazon charged, negative
+	 */
+	amazonFeesSettled: number;
+	/**
+	 * Sum of cogs, negative
+	 */
+	cogs: number;
+	/**
+	 * ISO currency of every money column of the row
+	 */
+	currency: string;
+	/**
+	 * The day the summed order-item rows are booked on, YYYY-MM-DD: the marketplace-local day in the merchant's booking time zone, as amzagg_profit__orderItem.dateBooked.
+	 */
+	dateBooked: PlainDateColumn;
+	/**
+	 * Sum over the rows of sales + promo + refundCost + reimbursements + amazonFeesSettled + amazonFeesEstimated + cogs + cogsCredit + shipping. Advertising and expenses are not in it.
+	 */
+	grossProfit: number;
+	/**
+	 * Marketplace of the order-item rows summed here; the empty string for the rows that name no marketplace (reimbursements, refunds whose order does not resolve), summed per currency.
+	 */
+	marketplaceId: string;
+	/**
+	 * Amazon Seller ID that owns the order-item rows summed here
+	 */
+	merchantId: string;
+	/**
+	 * Sum of promo, negative
+	 */
+	promo: number;
+	/**
+	 * Sum of refundCost, normally negative
+	 */
+	refundCost: number;
+	/**
+	 * Sum of refundedUnits
+	 */
+	refundedUnits: number;
+	/**
+	 * Sum of cogsCredit on every other row (units Amazon put back into stock)
+	 */
+	reimbursementCogsCredit: number;
+	/**
+	 * Sum of reimbursements, signed
+	 */
+	reimbursements: number;
+	/**
+	 * Sum of cogsCredit on customer-return rows (rows with sellable returned units)
+	 */
+	returnCogsCredit: number;
+	/**
+	 * Sum of returnedUnits
+	 */
+	returnedUnits: number;
+	/**
+	 * Order-item rows summed into this row
+	 */
+	rowCount: number;
+	/**
+	 * Distinct orders among the sale rows
+	 */
+	saleOrders: number;
+	/**
+	 * Sum of sales, positive
+	 */
+	sales: number;
+	/**
+	 * Units of the sale rows that carry no unit cost (no UNIT_COGS covers the sku)
+	 */
+	saleUnitsWithoutCost: number;
+	/**
+	 * Sum of sellableReturnUnits
+	 */
+	sellableReturnUnits: number;
+	/**
+	 * Sum of shipping, negative
+	 */
+	shipping: number;
+	/**
+	 * Sum of shipPromotionDiscount, negative, already netted inside sales
+	 */
+	shipPromotionDiscount: number;
+	/**
+	 * Sum of units sold
 	 */
 	units: number;
 }
@@ -1411,6 +1868,32 @@ export interface DbTable_amzagg_profit__orderItemProjectionState {
 	 */
 	status: string;
 	updatedAt: InstantColumn;
+}
+
+/**
+ * Fee-surcharge rate per marketplace and day, measured from the merchant's
+ * settled orders of the 90 days ending on that day; the rate the P&L
+ * order-item rows of that day are estimated with.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzagg_profit__orderItemSurchargeDay {
+	/**
+	 * The day whose sale lines take this rate, YYYY-MM-DD
+	 */
+	dateBooked: PlainDateColumn;
+	/**
+	 * Marketplace the rate was measured in
+	 */
+	marketplaceId: string;
+	/**
+	 * Amazon Seller ID
+	 */
+	merchantId: string;
+	/**
+	 * Surcharge as a fraction of the fees it is levied on, over the settled orders of the 90 days ending on the day; 0 where none is charged.
+	 */
+	surchargeRate: number;
 }
 
 /**
@@ -7016,8 +7499,17 @@ export interface DB {
 	amzadapi_exports_v1__target: DbTable_amzadapi_exports_v1__target;
 	amzadapi_reports_v1__product01__byDay: DbTable_amzadapi_reports_v1__product01__byDay;
 	amzadapi_reports_v1__search_asin_placement__byDay: DbTable_amzadapi_reports_v1__search_asin_placement__byDay;
+	amzagg_profit__adsDay: DbTable_amzagg_profit__adsDay;
+	amzagg_profit__adsStreamDay: DbTable_amzagg_profit__adsStreamDay;
+	amzagg_profit__expenseDay: DbTable_amzagg_profit__expenseDay;
 	amzagg_profit__orderItem: DbTable_amzagg_profit__orderItem;
+	amzagg_profit__orderItemClosedChange: DbTable_amzagg_profit__orderItemClosedChange;
+	amzagg_profit__orderItemContextMerchant: DbTable_amzagg_profit__orderItemContextMerchant;
+	amzagg_profit__orderItemContextSku: DbTable_amzagg_profit__orderItemContextSku;
+	amzagg_profit__orderItemCostTimeline: DbTable_amzagg_profit__orderItemCostTimeline;
+	amzagg_profit__orderItemDay: DbTable_amzagg_profit__orderItemDay;
 	amzagg_profit__orderItemProjectionState: DbTable_amzagg_profit__orderItemProjectionState;
+	amzagg_profit__orderItemSurchargeDay: DbTable_amzagg_profit__orderItemSurchargeDay;
 	amzfact_fnsku_fbaInventory_history: DbTable_amzfact_fnsku_fbaInventory_history;
 	amzfact_fnsku_fbaInventory_latest: DbTable_amzfact_fnsku_fbaInventory_latest;
 	amzfact_fnsku_ledger_estimate: DbTable_amzfact_fnsku_ledger_estimate;

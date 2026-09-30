@@ -15,7 +15,7 @@ import {
 } from "../declaration.ts";
 import { type CanonicalQueryRunner, executeCompiled } from "../execute.ts";
 import {
-	readFreshness,
+	loadFreshness,
 	skuByDayFreshnessQuery,
 	type SourceFreshness,
 	storeFreshnessQuery,
@@ -89,13 +89,13 @@ export interface AmazonReportSalesAndTrafficResult {
 }
 
 /**
- * Read `AmazonReport_SALES_AND_TRAFFIC` at one level.
+ * Load `AmazonReport_SALES_AND_TRAFFIC` at one level.
  *
  * `db` is the compile-only Kysely instance from `createCanonicalQueryBuilder()`;
  * `runner` is the caller's postgres.js connection, already pinned to the
  * workspace schema and configured with `makePostgresJsTypes()`.
  */
-export function readAmazonReportSalesAndTraffic(
+export function loadAmazonReportSalesAndTraffic(
 	db: Kysely<DB>,
 	runner: CanonicalQueryRunner,
 	request: AmazonReportSalesAndTrafficRequest,
@@ -165,7 +165,7 @@ export function readAmazonReportSalesAndTraffic(
 		}
 
 		const freshness = spec.source === "store"
-			? yield* readFreshness(db, runner, {
+			? yield* loadFreshness(db, runner, {
 				source: source.key,
 				relation: source.relation,
 				rule: "Latest date whose storefront session total reaches half the median of the store's 14 most " +
@@ -173,7 +173,7 @@ export function readAmazonReportSalesAndTraffic(
 					"one row per day whether or not Amazon has filled it in.",
 				query: storeFreshnessQuery(stores),
 			})
-			: yield* readFreshness(db, runner, {
+			: yield* loadFreshness(db, runner, {
 				source: source.key,
 				relation: source.relation,
 				rule: "Latest date whose row count reaches half the median of the store's 14 most recent present " +

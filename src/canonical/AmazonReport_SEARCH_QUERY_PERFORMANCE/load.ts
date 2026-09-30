@@ -13,7 +13,7 @@ import {
 } from "../declaration.ts";
 import { type CanonicalQueryRunner, executeCompiled } from "../execute.ts";
 import {
-	readFreshness,
+	loadFreshness,
 	searchQueryPerformanceFreshnessQuery,
 	type SourceFreshness,
 	type StoreRef,
@@ -85,13 +85,13 @@ export interface SearchQueryPerformanceQueryParams {
 }
 
 /**
- * Read Search Query Performance through its canonical two-stage aggregation.
+ * Load Search Query Performance through its canonical two-stage aggregation.
  *
  * Seller `asin*` counts are summed inside the normalization query. Whole-market
  * `total*` counts use MAX there because Amazon repeats them on every ASIN row.
  * Only the normalized rows reach the outer aggregation.
  */
-export function readAmazonReportSearchQueryPerformance(
+export function loadAmazonReportSearchQueryPerformance(
 	db: Kysely<DB>,
 	runner: CanonicalQueryRunner,
 	request: AmazonReportSearchQueryPerformanceRequest,
@@ -146,7 +146,7 @@ export function readAmazonReportSearchQueryPerformance(
 			};
 		}
 
-		const freshness = yield* readFreshness(db, runner, {
+		const freshness = yield* loadFreshness(db, runner, {
 			source: source.key,
 			relation: source.relation,
 			rule: "Latest delivered dateLast for the selected WEEK or MONTH report rows. SQP periods arrive closed, " +

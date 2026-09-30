@@ -22,7 +22,7 @@ import {
 	measuresForLevel,
 } from "../declaration.ts";
 import { type CanonicalQueryRunner, executeCompiled } from "../execute.ts";
-import { ordersFreshnessQuery, readFreshness, type SourceFreshness, type StoreRef } from "../freshness.ts";
+import { loadFreshness, ordersFreshnessQuery, type SourceFreshness, type StoreRef } from "../freshness.ts";
 import { MISSING_FAMILY } from "../missingFamily.ts";
 import { probeRelations } from "../relations.ts";
 import { type CanonicalResolvedWindow, type CanonicalWindow, resolveCanonicalWindow } from "../window.ts";
@@ -65,8 +65,8 @@ export interface AmazonOrdersResult {
 	readonly rows: readonly AmazonOrdersRow[];
 }
 
-/** Read `AmazonOrders` at one declared level. */
-export function readAmazonOrders(
+/** Load `AmazonOrders` at one declared level. */
+export function loadAmazonOrders(
 	db: Kysely<DB>,
 	runner: CanonicalQueryRunner,
 	request: AmazonOrdersRequest,
@@ -123,7 +123,7 @@ export function readAmazonOrders(
 			};
 		}
 
-		const freshness = yield* readFreshness(db, runner, {
+		const freshness = yield* loadFreshness(db, runner, {
 			source: source.key,
 			relation: source.relation,
 			rule: "The newest observed order date, capped at the last marketplace-local calendar day after a " +

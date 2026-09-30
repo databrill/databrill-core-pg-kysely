@@ -2,8 +2,8 @@ import { Either } from "effect";
 /** Compiled-SQL rules for the AmazonMarketplace and AmazonCountry readers. No database. */
 
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.19";
-import { compileAmazonCountryQuery } from "../../src/canonical/AmazonCountry/read.ts";
-import { compileAmazonMarketplaceQuery } from "../../src/canonical/AmazonMarketplace/read.ts";
+import { compileAmazonCountryQuery } from "../../src/canonical/AmazonCountry/load.ts";
+import { compileAmazonMarketplaceQuery } from "../../src/canonical/AmazonMarketplace/load.ts";
 import { createCanonicalQueryBuilder } from "../../src/canonical/execute.ts";
 
 const db = createCanonicalQueryBuilder();

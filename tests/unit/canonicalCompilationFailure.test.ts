@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertStrictEquals } from "jsr:@std/assert@1.0.19";
 import { Either } from "effect";
-import { compileAmazonCountryQuery } from "../../src/canonical/AmazonCountry/read.ts";
-import { compileAmazonMarketplaceQuery } from "../../src/canonical/AmazonMarketplace/read.ts";
+import { compileAmazonCountryQuery } from "../../src/canonical/AmazonCountry/load.ts";
+import { compileAmazonMarketplaceQuery } from "../../src/canonical/AmazonMarketplace/load.ts";
 import { createCanonicalQueryBuilder } from "../../src/canonical/execute.ts";
 
 Deno.test("canonical public compilers synchronously capture Kysely plugin exceptions with original cause identity", () => {

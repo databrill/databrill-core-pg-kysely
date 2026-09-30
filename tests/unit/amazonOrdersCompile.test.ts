@@ -3,7 +3,7 @@ import { Either } from "effect";
 
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.19";
 import { AMAZON_ORDERS } from "../../src/canonical/amazonOrders/declaration.ts";
-import { compileOrdersLevelQuery, type OrdersLevelQueryParams } from "../../src/canonical/amazonOrders/read.ts";
+import { compileOrdersLevelQuery, type OrdersLevelQueryParams } from "../../src/canonical/amazonOrders/load.ts";
 import { keyColumnsForMeasures, measuresForLevel } from "../../src/canonical/declaration.ts";
 import { createCanonicalQueryBuilder } from "../../src/canonical/execute.ts";
 import { ordersFreshnessQuery } from "../../src/canonical/freshness.ts";
