@@ -735,6 +735,85 @@ export interface DbTable_amazon_vendor_adapi_profile {
 }
 
 /**
+ * One Amazon Advertising invoice of one ads profile, fetched in full, per
+ * (merchant, profile, invoice). The summary fields are columns and the full
+ * invoice is in doc. Money columns are before tax except taxAmountDue and
+ * remainingTaxAmountDue.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzadapi_billing_v3__invoice {
+	/**
+	 * Invoice total before tax: the invoice lines plus adjustments plus promotions, in currencyCode
+	 */
+	amountDue: number;
+	/**
+	 * When this invoice row was first written
+	 */
+	createdAt: InstantColumn;
+	/**
+	 * Currency of every amount on the invoice (ISO 4217), the ads profile's currency
+	 */
+	currencyCode: string;
+	/**
+	 * The full invoice as Amazon returned it from GET /invoices/{invoiceId}: the response's payload, unchanged
+	 */
+	doc: Json;
+	/**
+	 * First day of the invoiced period, in the profile's days as Amazon states them. Amazon sends YYYYMMDD; stored as ISO YYYY-MM-DD.
+	 */
+	fromDate: PlainDateColumn;
+	/**
+	 * Day the invoice was issued, in the profile's days as Amazon states them. Amazon sends YYYYMMDD; stored as ISO YYYY-MM-DD.
+	 */
+	invoiceDate: PlainDateColumn;
+	/**
+	 * Amazon's invoice id
+	 */
+	invoiceId: string;
+	/**
+	 * Amazon marketplace id of the ads profile
+	 */
+	marketplaceId: string;
+	/**
+	 * Amazon seller id of the ads profile's store
+	 */
+	merchantId: string;
+	/**
+	 * Amazon's payment method of the invoice as Amazon spells it, e.g. UNIFIED_BILLING, CREDIT_CARD, ELECTRONICS_FUNDS_TRANSFER
+	 */
+	paymentMethod: string;
+	/**
+	 * Amazon Ads profile id the invoice belongs to
+	 */
+	profileId: string;
+	/**
+	 * Part of amountDue still unpaid, before tax, in currencyCode
+	 */
+	remainingAmountDue: number;
+	/**
+	 * Part of taxAmountDue still unpaid, in currencyCode
+	 */
+	remainingTaxAmountDue: number;
+	/**
+	 * Amazon's invoice status as Amazon spells it: ISSUED, PAID_IN_PART, PAID_IN_FULL or WRITTEN_OFF. Plain text, so a status Amazon adds later still stores.
+	 */
+	status: string;
+	/**
+	 * Tax on amountDue, stated separately, in currencyCode
+	 */
+	taxAmountDue: number;
+	/**
+	 * Last day of the invoiced period, in the profile's days as Amazon states them. Amazon sends YYYYMMDD; stored as ISO YYYY-MM-DD.
+	 */
+	toDate: PlainDateColumn;
+	/**
+	 * When this invoice row was last written
+	 */
+	updatedAt: InstantColumn;
+}
+
+/**
  * Amazon Ads program eligibility per (merchant, marketplace, program), with
  * the eligibility flag and any reasons Amazon gave for ineligibility.
  *
@@ -1230,409 +1309,257 @@ export interface DbTable_amzadapi_reports_v1__search_asin_placement__byDay {
 }
 
 /**
- * Advertising cost per store, ad day and ad product, summed from the daily ad
- * report. The day is the ad report's day in the ads account's time zone, as
- * Amazon reports it.
+ * Per-SKU daily advertising cost and attributed sales: the Sponsored Ads
+ * search-term and placement report summed per merchant, marketplace, day,
+ * budget currency, advertised SKU and advertised ASIN, over its rows with an
+ * advertised SKU. A day's rows of a store are only ever replaced by a fresh
+ * sum of the stored report rows, written with them.
  *
  * Read-only: it is not in `WritableDB`.
  */
-export interface DbTable_amzagg_profit__adsDay {
+export interface DbTable_amzagg_profit__adSkuDay {
 	/**
-	 * Advertising cost of the day, negative: the report's totalCost, negated
+	 * The report rows' advertisedProductId; the empty string when they carry none
 	 */
-	adCost: number;
+	asin: string;
 	/**
-	 * Ad product as the ad report names it (Sponsored Products, ...)
-	 */
-	adProduct: string;
-	/**
-	 * The report's budget currency, the currency of adCost
+	 * The report rows' budgetCurrency
 	 */
 	currency: string;
 	/**
-	 * The ad report's day, YYYY-MM-DD, in the ads account's time zone as Amazon reports it
+	 * The report's day, YYYY-MM-DD, as the ad report dates it
 	 */
-	dateAd: PlainDateColumn;
+	date: PlainDateColumn;
 	/**
-	 * True once a report covering the day arrived that was requested at least 15 days after it
-	 */
-	isFinal: boolean;
-	/**
-	 * Marketplace of the store
+	 * Marketplace of the report rows
 	 */
 	marketplaceId: string;
 	/**
-	 * Amazon Seller ID of the store
+	 * Amazon Seller ID
 	 */
 	merchantId: string;
 	/**
-	 * Report rows summed into this row
-	 */
-	rowCount: number;
-}
-
-/**
- * Running estimate of advertising cost per store, booking day and ad product
- * from the Marketing Stream traffic events, each distinct event added once.
- * Readers use amzagg_profit__adsDay for a day when it has one, else this
- * estimate.
- *
- * Read-only: it is not in `WritableDB`.
- */
-export interface DbTable_amzagg_profit__adsStreamDay {
-	/**
-	 * Advertising cost of the events summed here, negative
-	 */
-	adCost: number;
-	/**
-	 * Ad product, spelled as amzagg_profit__adsDay spells it
-	 */
-	adProduct: string;
-	/**
-	 * Currency of adCost, as the events report it
-	 */
-	currency: string;
-	/**
-	 * YYYY-MM-DD: the local day, in the merchant's booking time zone, of the hourly window start of the events summed here
-	 */
-	dateBooked: PlainDateColumn;
-	/**
-	 * Distinct stream events summed into this row
-	 */
-	eventCount: number;
-	/**
-	 * Marketplace of the store
-	 */
-	marketplaceId: string;
-	/**
-	 * Amazon Seller ID of the store
-	 */
-	merchantId: string;
-	/**
-	 * The latest hourly window start among the events summed here
-	 */
-	windowStartLastAt: InstantColumn;
-}
-
-/**
- * Account-level Amazon charges per store and posting day: the settlement rows
- * the P&L counts as expenses, which are not order or refund rows, not the
- * reserve, not advertising and not reimbursement reversals or clawbacks.
- * Negative amounts only, summed per charge type and shipment.
- *
- * Read-only: it is not in `WritableDB`.
- */
-export interface DbTable_amzagg_profit__expenseDay {
-	/**
-	 * Sum of the settlement rows' amounts, negative: a charge
-	 */
-	amount: number;
-	/**
-	 * The settlement row's amount description; the empty string when it has none
-	 */
-	amountDescription: string;
-	/**
-	 * The settlement row's amount type; the empty string when it has none
-	 */
-	amountType: string;
-	/**
-	 * The settlement's currency, the currency of amount
-	 */
-	currency: string;
-	/**
-	 * YYYY-MM-DD: the local day of the settlement row's posted time in the merchant's booking time zone, the zone amzagg_profit__orderItem.dateBooked uses.
-	 */
-	datePosted: PlainDateColumn;
-	/**
-	 * The marketplace the settlement row's marketplace name maps to, when it maps to exactly one; the empty string otherwise.
-	 */
-	marketplaceId: string;
-	/**
-	 * Amazon Seller ID that was charged
-	 */
-	merchantId: string;
-	/**
-	 * Settlement rows summed into this row
+	 * The report rows summed into the row
 	 */
 	rowCount: number;
 	/**
-	 * The settlement row's shipment id; the empty string when it has none. An inbound shipment's charges carry its shipment id: FBA... for an FBA shipment, STAR-... for an AWD one.
-	 */
-	shipmentId: string;
-	/**
-	 * The settlement row's transaction type, never Order or Refund
-	 */
-	transactionType: string;
-}
-
-/**
- * Materialized P&L order-item rows: one row per (merchantId, marketplaceId,
- * kind, orderId, sku, sourceKey). A product total is a fold of these rows.
- * Money is signed as it contributes to profit; the Amazon fee
- * (amazonFeesSettled + amazonFeesEstimated), gross profit, net profit, margin,
- * ROI and unit price are derived at read time and deliberately not stored.
- *
- * Read-only: it is not in `WritableDB`.
- */
-export interface DbTable_amzagg_profit__orderItem {
-	/**
-	 * Fee-preview forecast for the line's units Amazon has not charged yet, negative; 0 when every unit is charged and on every non-sale row. Replaced by settled fees when a rebuild finds the charge, never on an age threshold.
-	 */
-	amazonFeesEstimated: number;
-	/**
-	 * How many of the line's units amazonFeesEstimated covers: units minus the units the settled fees cover, floored at 0. The settled units are the largest, over fee kinds, of the summed quantity_purchased on the line's fee rows. 0 on a fully charged line, all of units on a line with no charges yet.
-	 */
-	amazonFeesEstimatedUnits: number;
-	/**
-	 * What Amazon actually charged for the line in SETTLEMENT_V2 ItemFees, negative; 0 when nothing has been charged yet and on every non-sale row. The line's Amazon fee is amazonFeesSettled + amazonFeesEstimated; no column stores the sum.
-	 */
-	amazonFeesSettled: number;
-	/**
-	 * ASIN as reported by the source, or null when it is unknown
-	 */
-	asin: string | null;
-	/**
-	 * Landed cost of the units sold, negative; 0 when no UNIT_COGS attribute covers the sku
-	 */
-	cogs: number;
-	/**
-	 * Landed cost credited back, positive: sellable customer returns and units Amazon put back into stock instead of paying for. Without it every returned unit is charged to COGS and never recovered.
-	 */
-	cogsCredit: number;
-	/**
-	 * ISO currency of every money column on the row. On refund and adjustment rows this is an attribution derived from the settlement summary, the reimbursement's currency_unit or the marketplace default, not necessarily a fact on the source row.
-	 */
-	currency: string;
-	/**
-	 * Marketplace-local date the row is booked on, YYYY-MM-DD. This is the period filter: order date for a sale, settlement posted date for a refund, return or approval date for an adjustment.
-	 */
-	dateBooked: PlainDateColumn;
-	/**
-	 * Marketplace-local date of the originating order, YYYY-MM-DD. Equal to dateBooked on a sale, carried from the originating order on a refund when it resolves, and null on an adjustment.
-	 */
-	dateOrder: PlainDateColumn | null;
-	/**
-	 * Fulfilment channel normalized to FBA or FBM; null when the source does not report one
-	 */
-	fulfillment: string | null;
-	/**
-	 * Which kind of order-item row this is, and therefore which date books it: sale | refund | adjustment
-	 */
-	kind: string;
-	/**
-	 * Marketplace the row is attributed to. On refund and adjustment rows this is an attribution, possibly the writer's single-marketplace context default, not a fact reported by the source.
-	 */
-	marketplaceId: string;
-	/**
-	 * Amazon Seller ID that owns the row
-	 */
-	merchantId: string;
-	/**
-	 * Amazon order id; the empty string for an inventory-level reimbursement that names no order (Lost_Warehouse, Lost_Inbound, Damaged_Warehouse, Reimbursement_Reversal).
-	 */
-	orderId: string;
-	/**
-	 * Order status as reported (Shipped, Pending, ...); the empty string on every non-sale row
-	 */
-	orderStatus: string;
-	/**
-	 * Item promotion discount, negative. Excludes the shipping promotion.
-	 */
-	promo: number;
-	/**
-	 * Promotion ids attached to the order line, comma-separated as Amazon reports them
-	 */
-	promotionIds: string | null;
-	/**
-	 * Net money movement of a refund event, signed and normally negative: returned principal and shipping, the commission Amazon gives back, and the refund commission it keeps.
-	 */
-	refundCost: number;
-	/**
-	 * Units refunded by this row; 0 on sale and adjustment rows. Refund settlement rows never carry a quantity, so this is estimated from the refunded principal over the original unit price and clamped into [1, ordered units] per grouped local day.
-	 */
-	refundedUnits: number;
-	/**
-	 * FBA reimbursement money, signed: a reimbursement is positive, a reversal negative
-	 */
-	reimbursements: number;
-	/**
-	 * True when the order and sku have a refund or a customer return on record on ANY date, not only within the projected period. Always true on a refund or return row, false on a reimbursement.
-	 */
-	returned: boolean;
-	/**
-	 * Units physically returned by this row, all dispositions; non-zero only on a return row
-	 */
-	returnedUnits: number;
-	/**
-	 * Revenue: item + shipping + gift wrap, NET of the shipping promotion. Positive. Add back shipPromotionDiscount to get the gross-of-shipping-promotion definition the dashboard uses.
+	 * Sum of the report rows' attributed sales, in currency
 	 */
 	sales: number;
 	/**
-	 * Positive base a reader applies its own VAT rate to: item_price + shipping_price + gift_wrap_price (gross of the shipping promotion) when the report carries no VAT-exclusive item price, else 0. Not a profit amount. 0 on every non-sale row. The line's VAT is vatReported - salesMissingVatExclusive * rate / (1 + rate).
-	 */
-	salesMissingVatExclusive: number;
-	/**
-	 * Of returnedUnits, those that came back SELLABLE and are credited back to COGS
-	 */
-	sellableReturnUnits: number;
-	/**
-	 * Ship-to country of the order line as the order report states it; null when the report has none and on every non-sale row. A refund or return reaches a country through its sale row.
-	 */
-	shipCountry: string | null;
-	/**
-	 * Seller-paid shipping (FBM), negative; not modelled yet, always 0
-	 */
-	shipping: number;
-	/**
-	 * Shipping promotion, negative, already netted inside sales. Stored separately so both the exporter's split (shipping promotion nets revenue) and the dashboard's split (shipping promotion is a promotion) stay derivable from one projection.
-	 */
-	shipPromotionDiscount: number;
-	/**
-	 * Seller SKU; the empty string where the event is not attributable to one
+	 * The report rows' advertisedProductSku; never the empty string
 	 */
 	sku: string;
 	/**
-	 * Discriminator carrying the source aggregate's remaining GROUP BY columns, built with makeCompositeKey: empty on a sale; the refund id on a refund; (return:, dateBooked) or (reimb:, dateBooked, currency, reason) on an adjustment. It makes the primary key unique per source aggregate, not per real-world event.
+	 * Sum of the report rows' totalCost, in currency
 	 */
-	sourceKey: string;
+	totalCost: number;
+}
+
+/**
+ * Per-store and per-day dashboard summary of the accrual ledger and the open
+ * order lines: the amount, units and contributing rows of each dashboard line,
+ * by the day the dashboard shows them (the order date for a sale, its cost of
+ * goods and an open order line, the booked day otherwise).
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzagg_profit__ledgerDay {
 	/**
-	 * Seller listing title, falling back to the catalog item name; null when neither is known
+	 * The line's money, signed as it contributes to profit: minus the sum of the mapped postings, plus the open order lines' own amounts; 0 on the orders line
 	 */
-	title: string | null;
+	amount: number;
 	/**
-	 * Landed unit cost as of the row's booked date, in the row's currency; on a customer return, the cost its sale line was charged. Null when no UNIT_COGS attribute covers the sku. Not derivable from cogs, which is 0 on a zero-unit row.
+	 * Currency of the contributing transaction or open order line; an open order line that states none takes its marketplace's default currency
 	 */
-	unitCogs: number | null;
+	currency: string;
 	/**
-	 * Units sold on this line; 0 on refund and adjustment rows
+	 * The day the dashboard shows the amount on, YYYY-MM-DD: the order day of a sale, a title transfer, the cost of goods of either and an open order line; the booked day otherwise, and for a sale none of whose sale lines has an order day
+	 */
+	dateDashboard: PlainDateColumn;
+	/**
+	 * The contributing transaction's beancount flag: * for a booked fact, ! for a provisional booking; open order lines and orders are *
+	 */
+	flag: string;
+	/**
+	 * The dashboard line (revenue, promoItem, promoShipping, amazonFees, amazonFeesEstimated, refunds, inbound, storage, taxNotRecovered, cogs, cogsReplacements, cogsReturnLoss, cogsWarehouseLoss, returnCogsCredit, adCost, accountExpenses, reimbursements, reimbursementCogsCredit, unclassified, orders), followed by a colon and the child for amazonFees (the fee's name), accountExpenses and unclassified (the account below its root or below Unclassified)
+	 */
+	line: string;
+	/**
+	 * Marketplace of the contributing transaction or open order line; the empty string when the transaction names none
+	 */
+	marketplaceId: string;
+	/**
+	 * Amazon Seller ID
+	 */
+	merchantId: string;
+	/**
+	 * The postings, sale lines, open order lines and orders summed into the row; a row is deleted when it reaches 0
+	 */
+	rowCount: number;
+	/**
+	 * ledger for ledger postings and sale lines dated by their rule, openOrderLine for the unshipped units of the open order lines, ledgerNoOrderDate for a sale none of whose sale lines has an order day, and its cost of goods, dated by its booked day
+	 */
+	source: string;
+	/**
+	 * Units: on revenue the sale lines' and open order lines' units; on cogs, cogsReturnLoss and returnCogsCredit the units the unit-cost postings cost; on orders the orders counted, each once on the earliest day of its sale lines and open order lines; 0 elsewhere
+	 */
+	units: number;
+}
+
+/**
+ * Per-product and per-day dashboard summary of the accrual ledger and the open
+ * order lines, the product grain of amzagg_profit__ledgerDay.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzagg_profit__ledgerProductDay {
+	/**
+	 * The line's money, signed as it contributes to profit; 0 on the orders line
+	 */
+	amount: number;
+	/**
+	 * ASIN of the posting; the empty string when it names none, and on the rows of sale lines, open order lines and orders, which carry none
+	 */
+	asin: string;
+	/**
+	 * Currency of the contributing transaction or open order line; an open order line that states none takes its marketplace's default currency
+	 */
+	currency: string;
+	/**
+	 * The day the dashboard shows the amount on, YYYY-MM-DD, by the rule of amzagg_profit__ledgerDay
+	 */
+	dateDashboard: PlainDateColumn;
+	/**
+	 * The contributing transaction's beancount flag; * for open order lines
+	 */
+	flag: string;
+	/**
+	 * The dashboard line, with its child after a colon, as in amzagg_profit__ledgerDay
+	 */
+	line: string;
+	/**
+	 * Marketplace of the contributing transaction or open order line; the empty string when the transaction names none
+	 */
+	marketplaceId: string;
+	/**
+	 * Amazon Seller ID
+	 */
+	merchantId: string;
+	/**
+	 * The postings, sale lines, open order lines and orders summed into the row; a row is deleted when it reaches 0
+	 */
+	rowCount: number;
+	/**
+	 * Seller SKU of the posting, sale line or open order line; the empty string when the posting names none
+	 */
+	sku: string;
+	/**
+	 * The source, as in amzagg_profit__ledgerDay
+	 */
+	source: string;
+	/**
+	 * Units, as in amzagg_profit__ledgerDay; on orders the (order, SKU) pairs counted
+	 */
+	units: number;
+}
+
+/**
+ * Dashboard-only open order lines: each Amazon storefront ALL_ORDERS line not
+ * cancelled whose units the accrual ledger has not booked yet, with ordered,
+ * booked and open units and the open units' prorated money and fee estimate.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzagg_profit__openOrderLine {
+	/**
+	 * The ALL_ORDERS currency of the line; null when the report states none
+	 */
+	currency: string | null;
+	/**
+	 * The line's purchase day in its marketplace zone, YYYY-MM-DD
+	 */
+	dateOrder: PlainDateColumn;
+	/**
+	 * Fee estimate from the fee preview and the surcharge rate (negative), for the dashboard only, prorated to the open units
+	 */
+	feesEstimated: number;
+	/**
+	 * ALL_ORDERS item_status of the line; never Cancelled
+	 */
+	itemStatus: string | null;
+	/**
+	 * The ALL_ORDERS marketplace_id of the line, as stored
+	 */
+	marketplaceId: string;
+	/**
+	 * Amazon Seller ID
+	 */
+	merchantId: string;
+	/**
+	 * Amazon order id, the ALL_ORDERS amazon_order_id
+	 */
+	orderId: string;
+	/**
+	 * ALL_ORDERS order_status of the line; never Cancelled
+	 */
+	orderStatus: string | null;
+	/**
+	 * Negated item_promotion_discount (negative), prorated to the open units
+	 */
+	promo: number;
+	/**
+	 * item_price, prorated to the open units
+	 */
+	sales: number;
+	/**
+	 * item_price plus shipping_price plus gift_wrap_price when vat_exclusive_item_price is absent, else 0; prorated to the open units
+	 */
+	salesMissingVatExclusive: number;
+	/**
+	 * ALL_ORDERS ship_country of the line, the input that chooses the VAT rate
+	 */
+	shipCountry: string | null;
+	/**
+	 * shipping_price plus gift_wrap_price, gross of the shipping promotion, prorated to the open units
+	 */
+	shipping: number;
+	/**
+	 * Negated ship_promotion_discount (negative), prorated to the open units
+	 */
+	shipPromo: number;
+	/**
+	 * Seller SKU, the ALL_ORDERS sku
+	 */
+	sku: string;
+	/**
+	 * Open units, unitsOrdered minus unitsBooked; always greater than zero
 	 */
 	units: number;
 	/**
-	 * VAT the order report states for the line's item price, negative: -(item_price - vat_exclusive_item_price) when the report carries a VAT-exclusive item price, else 0. Item price only; 0 on every non-sale row.
+	 * Units of the line the accrual ledger has booked, at most unitsOrdered
+	 */
+	unitsBooked: number;
+	/**
+	 * The line's ALL_ORDERS quantity
+	 */
+	unitsOrdered: number;
+	/**
+	 * vat_exclusive_item_price minus item_price when vat_exclusive_item_price is present, else 0; prorated to the open units
 	 */
 	vatReported: number;
 }
 
 /**
- * Record of source changes that reach closed P&L order-item history (rows
- * booked before the open period): per merchant, source kind, date range and
- * SKU, when it was seen, how many rows and how much gross profit it moves, and
- * when it was repaired.
- *
- * Read-only: it is not in `WritableDB`.
- */
-export interface DbTable_amzagg_profit__orderItemClosedChange {
-	/**
-	 * First booked day the change may alter, YYYY-MM-DD
-	 */
-	dateFirst: PlainDateColumn;
-	/**
-	 * Last booked day the change may alter, inclusive, YYYY-MM-DD
-	 */
-	dateLast: PlainDateColumn;
-	/**
-	 * When the entry was first recorded
-	 */
-	firstSeenAt: InstantColumn;
-	/**
-	 * flag: a source writer's change or the recalculation's own upkeep recorded it; monthlyCheck: only the nightly comparison of a closed month found it.
-	 */
-	foundBy: string;
-	/**
-	 * When the entry was last recorded again
-	 */
-	lastSeenAt: InstantColumn;
-	/**
-	 * Amazon Seller ID whose closed rows may differ
-	 */
-	merchantId: string;
-	/**
-	 * Sum of the absolute change of gross profit of those rows, in each row's currency; null until priced
-	 */
-	moneyAbs: number | null;
-	/**
-	 * Sum of the signed change of gross profit of those rows; null until priced
-	 */
-	moneySigned: number | null;
-	/**
-	 * When the nightly run last priced the entry; null when not priced since last seen
-	 */
-	pricedAt: InstantColumn | null;
-	/**
-	 * When the repair last rewrote the entry's dates; null when not repaired since last seen
-	 */
-	repairedAt: InstantColumn | null;
-	/**
-	 * Order-item rows of the entry's dates that differ from a fresh calculation, title-only differences excluded; null until priced.
-	 */
-	rowsDiffering: number | null;
-	/**
-	 * How many times the entry was recorded
-	 */
-	seenCount: number;
-	/**
-	 * The SKU the change is limited to; the empty string when it names none
-	 */
-	sku: string;
-	/**
-	 * The kind of source change that reaches these dates; returnCredit: returns whose sale line's cost a repair changed; unknown: a difference only the monthly comparison found.
-	 */
-	sourceKind: string;
-}
-
-/**
- * Per merchant: the projection version, booking time zone and date range of
- * the P&L order-item context last written, the month of closed history the
- * nightly check compared last, and the zone the stream-estimate and expense
- * days were last rebuilt in.
- *
- * Read-only: it is not in `WritableDB`.
- */
-export interface DbTable_amzagg_profit__orderItemContextMerchant {
-	/**
-	 * First day of the closed month the nightly run compared last, YYYY-MM-DD; null before the first comparison.
-	 */
-	dateClosedCheckLast: PlainDateColumn | null;
-	/**
-	 * First booked day of the calculation that wrote the context, YYYY-MM-DD
-	 */
-	dateFirst: PlainDateColumn;
-	/**
-	 * Last booked day of the calculation that wrote the context, YYYY-MM-DD
-	 */
-	dateLast: PlainDateColumn;
-	/**
-	 * Amazon Seller ID; the whole primary key
-	 */
-	merchantId: string;
-	/**
-	 * Projection version of the calculation that wrote the context
-	 */
-	projectionVersion: number;
-	/**
-	 * The merchant's booking time zone: the IANA zone its order-item rows' dateBooked is local to
-	 */
-	timeZone: string;
-	/**
-	 * When the row was last written
-	 */
-	updatedAt: InstantColumn;
-	/**
-	 * The booking time zone amzagg_profit__adsStreamDay and amzagg_profit__expenseDay were last rebuilt in for the open period; null before the first rebuild. While it differs from timeZone, the next order-item recalculation rebuilds them.
-	 */
-	zoneDaysTimeZone: string | null;
-}
-
-/**
- * Per-SKU context of the P&L order-item fast path: fee-preview fields and the
- * listing title, written by the order-item recalculation from its own
- * calculation, only the rows that changed.
+ * Per-SKU fee-preview fields the open order lines' fee estimate applies,
+ * written by the accrual ledger's rebuild for the SKUs of the open order lines
+ * it computes, only the rows that changed.
  *
  * Read-only: it is not in `WritableDB`.
  */
 export interface DbTable_amzagg_profit__orderItemContextSku {
 	/**
-	 * The asin the title was resolved for; a line with another asin resolves its own
+	 * ASIN of the SKU in the fee preview; null when the preview has none
 	 */
 	asin: string | null;
 	/**
@@ -1667,221 +1594,21 @@ export interface DbTable_amzagg_profit__orderItemContextSku {
 	 * Seller SKU
 	 */
 	sku: string;
-	/**
-	 * The title an order-item row of this SKU and asin carries; null when none is known
-	 */
-	title: string | null;
 }
 
 /**
- * Landed unit cost of each SKU as intervals of days, as the P&L order-item
- * recalculation resolved its UNIT_COGS attributes; the fast path costs each
- * sale line at its own day from it.
- *
- * Read-only: it is not in `WritableDB`.
- */
-export interface DbTable_amzagg_profit__orderItemCostTimeline {
-	/**
-	 * The asin the cost was resolved for; the empty string when unknown
-	 */
-	asin: string;
-	/**
-	 * Currency of unitCost; null means the marketplace's own currency
-	 */
-	costCurrency: string | null;
-	/**
-	 * Uppercase country code of the marketplace the cost applies in
-	 */
-	country: string;
-	/**
-	 * First day the cost applies, YYYY-MM-DD
-	 */
-	dateFirst: PlainDateColumn;
-	/**
-	 * Last day the cost applies, inclusive, YYYY-MM-DD; null while it is open
-	 */
-	dateLast: PlainDateColumn | null;
-	/**
-	 * Amazon Seller ID
-	 */
-	merchantId: string;
-	/**
-	 * Seller SKU
-	 */
-	sku: string;
-	/**
-	 * Landed cost of one unit, in costCurrency
-	 */
-	unitCost: number;
-}
-
-/**
- * Per-store, per-day sums of amzagg_profit__orderItem: one row per merchant,
- * marketplace, currency and booked day, rows with no marketplace summed on
- * their own per currency. Kept by the same transactions that write the
- * order-item rows. Money sums are exact to six decimals.
- *
- * Read-only: it is not in `WritableDB`.
- */
-export interface DbTable_amzagg_profit__orderItemDay {
-	/**
-	 * Sum of amazonFeesEstimated: fee-preview forecast, negative
-	 */
-	amazonFeesEstimated: number;
-	/**
-	 * Sum of amazonFeesEstimatedUnits: sold units whose fees are still a forecast
-	 */
-	amazonFeesEstimatedUnits: number;
-	/**
-	 * Sum of amazonFeesSettled: fees Amazon charged, negative
-	 */
-	amazonFeesSettled: number;
-	/**
-	 * Sum of cogs, negative
-	 */
-	cogs: number;
-	/**
-	 * ISO currency of every money column of the row
-	 */
-	currency: string;
-	/**
-	 * The day the summed order-item rows are booked on, YYYY-MM-DD: the marketplace-local day in the merchant's booking time zone, as amzagg_profit__orderItem.dateBooked.
-	 */
-	dateBooked: PlainDateColumn;
-	/**
-	 * Sum over the rows of sales + promo + refundCost + reimbursements + amazonFeesSettled + amazonFeesEstimated + cogs + cogsCredit + shipping. Advertising and expenses are not in it.
-	 */
-	grossProfit: number;
-	/**
-	 * Marketplace of the order-item rows summed here; the empty string for the rows that name no marketplace (reimbursements, refunds whose order does not resolve), summed per currency.
-	 */
-	marketplaceId: string;
-	/**
-	 * Amazon Seller ID that owns the order-item rows summed here
-	 */
-	merchantId: string;
-	/**
-	 * Sum of promo, negative
-	 */
-	promo: number;
-	/**
-	 * Sum of refundCost, normally negative
-	 */
-	refundCost: number;
-	/**
-	 * Sum of refundedUnits
-	 */
-	refundedUnits: number;
-	/**
-	 * Sum of cogsCredit on every other row (units Amazon put back into stock)
-	 */
-	reimbursementCogsCredit: number;
-	/**
-	 * Sum of reimbursements, signed
-	 */
-	reimbursements: number;
-	/**
-	 * Sum of cogsCredit on customer-return rows (rows with sellable returned units)
-	 */
-	returnCogsCredit: number;
-	/**
-	 * Sum of returnedUnits
-	 */
-	returnedUnits: number;
-	/**
-	 * Order-item rows summed into this row
-	 */
-	rowCount: number;
-	/**
-	 * Distinct orders among the sale rows
-	 */
-	saleOrders: number;
-	/**
-	 * Sum of sales, positive
-	 */
-	sales: number;
-	/**
-	 * Units of the sale rows that carry no unit cost (no UNIT_COGS covers the sku)
-	 */
-	saleUnitsWithoutCost: number;
-	/**
-	 * Sum of sellableReturnUnits
-	 */
-	sellableReturnUnits: number;
-	/**
-	 * Sum of shipping, negative
-	 */
-	shipping: number;
-	/**
-	 * Sum of shipPromotionDiscount, negative, already netted inside sales
-	 */
-	shipPromotionDiscount: number;
-	/**
-	 * Sum of units sold
-	 */
-	units: number;
-}
-
-/**
- * Completeness state of the amzagg_profit__orderItem projection, one row per
- * merchant. Reading only a READY scope on this row, including the covered date
- * window, is what makes a delete-and-replace rebuild safe to serve.
- *
- * Read-only: it is not in `WritableDB`.
- */
-export interface DbTable_amzagg_profit__orderItemProjectionState {
-	/**
-	 * Completion time of the last successful rebuild; null until one succeeds
-	 */
-	completedAt: InstantColumn | null;
-	createdAt: InstantColumn;
-	/**
-	 * First marketplace-local bookedDate the last completed rebuild covered, YYYY-MM-DD; null before one completes. Reads outside this window are not served by this table.
-	 */
-	dateCoveredFirst: PlainDateColumn | null;
-	/**
-	 * Last marketplace-local bookedDate the last completed rebuild covered, YYYY-MM-DD; null before one completes.
-	 */
-	dateCoveredLast: PlainDateColumn | null;
-	/**
-	 * Sanitized failure detail; never contains documents or business identifiers
-	 */
-	lastError: string | null;
-	/**
-	 * Amazon Seller ID; the whole primary key, one row per merchant
-	 */
-	merchantId: string;
-	/**
-	 * Projection version this state describes; the first version is 1
-	 */
-	projectionVersion: number;
-	/**
-	 * Order-item rows written by the last completed rebuild of this merchant
-	 */
-	rowCount: number;
-	/**
-	 * Start of the current or most recent rebuild run
-	 */
-	startedAt: InstantColumn;
-	/**
-	 * BACKFILLING | READY | STALE | FAILED
-	 */
-	status: string;
-	updatedAt: InstantColumn;
-}
-
-/**
- * Fee-surcharge rate per marketplace and day, measured from the merchant's
- * settled orders of the 90 days ending on that day; the rate the P&L
- * order-item rows of that day are estimated with.
+ * Fee-surcharge rate per marketplace and order day, measured from the
+ * merchant's settled orders of the 90 days ending on that day; written by the
+ * accrual ledger's whole-merchant walk and read by the open order lines' fee
+ * estimate.
  *
  * Read-only: it is not in `WritableDB`.
  */
 export interface DbTable_amzagg_profit__orderItemSurchargeDay {
 	/**
-	 * The day whose sale lines take this rate, YYYY-MM-DD
+	 * The order day whose open order lines take this rate, YYYY-MM-DD
 	 */
-	dateBooked: PlainDateColumn;
+	dateOrder: PlainDateColumn;
 	/**
 	 * Marketplace the rate was measured in
 	 */
@@ -2225,160 +1952,287 @@ export interface DbTable_amzfact_fnsku_ledger_latest {
 }
 
 /**
- * What one ledger write covered and what it could not place, one row per
- * (merchantId, dateFirst, dateLast). Reading the ledger is deliberately NOT
- * conditional on this table: no status, no READY check. It records the three
- * things a run encountered that produced no transaction and no posting.
+ * What the accrual ledger noticed about one of its transactions: an unmapped
+ * breakdown path, an unknown transaction type, a priced sale release record
+ * with no deferred record, money left without a SKU because its order has
+ * several SKUs or its sources name different ones, a release whose amounts
+ * changed, a sale line without an order date, a title transfer without units,
+ * a product item with no SKU whose description is a known code for a charge,
+ * more units booked for an order line than it ordered, units no configured
+ * cost covers, a restock that found no costed unit of its order to take back,
+ * a tax posting without a taxable base, tax paid by a configured tax entity
+ * whose jurisdiction could not be derived, or a reverse charge in a country
+ * the entity recovers no tax in.
  *
  * Read-only: it is not in `WritableDB`.
  */
-export interface DbTable_amzfact_ledger_build {
+export interface DbTable_amzfact_ledger_diagnostic {
 	/**
-	 * Orders the SKU join refused to resolve. The money is booked in full; only the SKU dimension is withheld.
+	 * A JSONB object whose shape depends on kind. unmapped: {path, occurrences, amount}, amount the source's own unnegated amount. excludedType: {transactionType, totalAmount}. shipmentWithoutDeferredRecord: {totalAmount, units}, units one {sku, units} per SKU of its items. attributionHold: {orderId, reason, skus, postings}. releaseAmountChanged: {releaseTransactionId, deferredTotal, releasedTotal}. dateOrderMissing: {orderId, sku}. titleTransferUnitsMissing: {orderId}, orderId null when the transfer names no order. knownItemDescriptionNotInPath: {description, asin}, asin null when the item names none. unitsExceedOrdered: {orderId, sku, unitsOrdered, unitsBooked}. costMissing: {sku, units, costDay, country}. restockWithoutCost: {sku, asin, units, costDay}, asin null when the row names none. taxBaseMissing: {path, sku, amount}, sku null when the posting has none. paidTaxJurisdictionUnknown: {path, reason, country, rateObserved, amount}, reason rateMismatch or noIssuerJurisdiction, country the candidate country or null, rateObserved the tax over its base in percent or null without a base. reverseChargeWithoutRecovery: {invoiceId, country, amount}.
 	 */
-	attributionHolds: Json;
+	detail: Json;
 	/**
-	 * First marketplace-local bookedDate the write covered, YYYY-MM-DD
+	 * Which diagnostic this is; decides the shape of detail
 	 */
-	dateFirst: PlainDateColumn;
+	kind: string;
 	/**
-	 * Last marketplace-local bookedDate the write covered, YYYY-MM-DD
-	 */
-	dateLast: PlainDateColumn;
-	/**
-	 * Transaction types in the source but outside the allow-list, with their money: the standing explanation for Assets:…:Clearing drift
-	 */
-	excludedTypes: Json;
-	/**
-	 * Amazon sellingPartnerId this write covered, across every marketplace
+	 * Amazon sellingPartnerId of the transaction
 	 */
 	merchantId: string;
-	postingsWritten: number;
 	/**
-	 * Compiled projection version that wrote it; matches the transaction rows
+	 * Position among this transaction's entries of this kind, from 0 (one unmapped entry per breakdown path, one dateOrderMissing entry per sale line)
+	 */
+	ordinal: number;
+	/**
+	 * Which compiled ledger logic wrote this row
 	 */
 	projectionVersion: number;
 	/**
-	 * Rows deleted because the source named them superseded by a released emission
+	 * The amzfact_ledger_transaction this entry describes
 	 */
-	transactionsSuperseded: number;
-	transactionsWritten: number;
-	/**
-	 * Breakdown paths no placement covers. Their money IS booked, into Equity:…:Imbalance; this records which path caused it, which the imbalance posting's empty path cannot say.
-	 */
-	unmapped: Json;
-	/**
-	 * When this write completed
-	 */
-	writtenAt: InstantColumn;
+	transactionKey: string;
 }
 
 /**
- * A ledger transaction's per-SKU dimension: SKU, ASIN and units, one row per
- * (transactionId, sku). Carries no money and is not derivable from the
- * postings — units appear on no posting, and a free replacement's SKU appears
- * in no posting at all.
+ * Per merchant, the state of its accrual ledger: the ledger version and status
+ * of the last build, the first day of the books, the merchant's region, and
+ * the build's times and counts. Read by the ledger readers, the CLI and the
+ * service that keeps flagged merchants built, and by the advertising invoice
+ * writer, which starts each marketplace's invoice chain on the first day of
+ * the books.
  *
  * Read-only: it is not in `WritableDB`.
  */
-export interface DbTable_amzfact_ledger_item {
+export interface DbTable_amzfact_ledger_merchant {
 	/**
-	 * ASIN as the source reported it, or null when unknown
+	 * When the last build completed; null while it runs or after it failed
 	 */
-	asin: string | null;
+	completedAt: InstantColumn | null;
 	/**
-	 * Seller SKU, or the empty string where the document's money is not attributable to one. Read back as null; no real SKU is the empty string.
+	 * The first day of the books: the merchant's first full day of stored Finances in every zone its transactions are dated in, YYYY-MM-DD
 	 */
-	sku: string;
+	dateLedgerFirst: PlainDateColumn;
 	/**
-	 * The amzfact_ledger_transaction this item belongs to
+	 * amzfact_ledger_diagnostic rows the last build wrote; null until it completes
 	 */
-	transactionId: string;
+	diagnosticsWritten: number | null;
 	/**
-	 * quantityShipped summed over the document's items sharing this SKU. Zero on an itemless document. Carried nowhere else: no posting has a unit count.
+	 * Why the last build failed; null otherwise
 	 */
-	units: number;
+	lastError: string | null;
+	/**
+	 * Amazon sellingPartnerId; the ledger covers all its marketplaces
+	 */
+	merchantId: string;
+	/**
+	 * amzfact_ledger_posting rows the last build wrote; null until it completes
+	 */
+	postingsWritten: number | null;
+	/**
+	 * Compiled ledger version of the last build. Readers serve the merchant only while it equals the code's version.
+	 */
+	projectionVersion: number;
+	/**
+	 * The merchant's Amazon region (EU, NA or FE) as the last build resolved it: its zone dates a transaction whose marketplace is empty or unlisted
+	 */
+	region: string;
+	/**
+	 * amzfact_ledger_saleLine rows the last build wrote; null until it completes
+	 */
+	saleLinesWritten: number | null;
+	/**
+	 * When the last build of this merchant began. A build writes only while this still holds its own start, so a later build of the same merchant stops an earlier one.
+	 */
+	startedAt: InstantColumn;
+	/**
+	 * BUILDING while a build runs, READY once it completed, FAILED when it stopped on an error or could not take the merchant's ledger lock. Readers serve the merchant only when READY.
+	 */
+	status: string;
+	/**
+	 * amzfact_ledger_transaction rows the last build wrote; null until it completes
+	 */
+	transactionsWritten: number | null;
 }
 
 /**
  * One posting of a ledger transaction: a signed amount against an account. The
- * postings of one transactionId sum to zero. Keyed on (transactionId, ordinal)
- * because a multi-unit line produces postings identical in every other column.
+ * postings of one (merchantId, transactionKey) sum to zero.
  *
  * Read-only: it is not in `WritableDB`.
  */
 export interface DbTable_amzfact_ledger_posting {
 	/**
-	 * Full account name, e.g. Income:Amazon:<sellingPartnerId>:<marketplaceId>:ProductCharges. The scope segments are why two marketplaces can never share an account and a multi-currency total is unrepresentable rather than merely avoided. Profit is derived from the ROOT, never a list.
+	 * Full account name, <Root>:Amazon:<sellingPartnerId>:<marketplaceId>:..., where <Root> is Income, Expenses, Assets, Liabilities or Equity, derived from the breakdown path; for an ad day's advertising, Expenses:...:Advertising:<ad product> and Liabilities:...:AdvertisingPayable; for unit costs, Expenses:...:COGS (units sold), Expenses:...:Replacements (free replacements), Expenses:...:ReturnLoss (refunded units that do not come back to sellable stock) and Expenses:...:WarehouseLoss (units Amazon lost or damaged and paid for), each against Assets:...:Inventory, the cost moved in and out of inventory by these transactions, not a stock valuation. Income and Expenses are profit; the other roots are not.
 	 */
 	account: string;
 	/**
-	 * Signed amount: Amazon's breakdown amount NEGATED, or the document's totalAmount unnegated on the settlement leg. The postings of one transaction sum to zero.
+	 * Signed amount: the breakdown amount negated, or the source's total unnegated on the settling posting; for an ad day's advertising, the spend on each debit and minus their sum on the credit. The postings of one transaction sum to zero.
 	 */
 	amount: number;
+	/**
+	 * ASIN of the item the posting came from; null when the item names none
+	 */
 	asin: string | null;
 	/**
-	 * Position within the transaction's postings, from 0. Required: a multi-unit line can produce several postings identical in every other column. Also the order the beancount export prints.
+	 * A JSONB object or null. skuSource: allOrders or settlement when that report supplied the SKU; customerReturns when the customer returns named a disposal fee's SKU; removalShipmentMatch, removalLineMatch or removalResidualSplit when a removal or disposal fee under a removal order took its SKU from one removal shipment, from one removal order line, or from a split over what the matched fees left of each SKU's report fee. On every tax posting (collected tax and its withheld mirror, tax Amazon charged the seller, an advertising invoice's reverse charge): taxBase, the taxable base in the transaction's currency and in the posting's sign (the sale, fee or charge the tax was computed on, or an invoice's pre-tax amountDue), absent when the document states none; taxRate, the VAT rate in percent (23 for 23 %), present only when exactly one rate of taxCountry's dated rate list fits the tax and its base, and on a reverse charge the payer country's standard rate; taxCountry, the ISO 3166-1 alpha-2 country whose tax the posting is (the ship-to country of collected tax, the jurisdiction of paid tax, the payer's country of a reverse charge), absent when unknown. A tax posting split in two parts or over several SKUs splits its taxBase in the same proportion, so the parts' bases sum to the base. On each COGS, Replacements, ReturnLoss or WarehouseLoss posting of a unit cost, restock, return loss or warehouse loss transaction: units; unitCost, the cost of one unit in the transaction's currency, rounded to six decimals; costDay, YYYY-MM-DD, the day the cost was resolved on.
+	 */
+	detail: Json | null;
+	/**
+	 * Amazon sellingPartnerId of the transaction
+	 */
+	merchantId: string;
+	/**
+	 * Position within the transaction's postings, from 0; also the order the export prints
 	 */
 	ordinal: number;
 	/**
-	 * Breakdown path from level 1 to the deepest node, as a JSONB array. EMPTY on the settlement leg and the imbalance plug, and that emptiness is the discriminator readers test.
+	 * Breakdown path from level 1 to the deepest node, as a JSONB array, followed by the item's description when the item names no SKU (never a product title); on an advertising invoice's promotion or adjustment, promotions or adjustments followed by its description, raw; empty on postings that transcribe no breakdown node, the postings of COGS, replacement cost, COGS credit and return loss transactions included
 	 */
 	path: Json;
 	/**
-	 * The item this posting came from; null at document grain and on the settlement leg. Null rather than an empty-string sentinel, because a sentinel type-checks everywhere a real SKU is expected and would flow silently into per-SKU joins.
+	 * Seller SKU of the item the posting came from, or the SKU a report or the removal fee rule supplied; null when none is known
 	 */
 	sku: string | null;
 	/**
 	 * The amzfact_ledger_transaction this posting belongs to
 	 */
-	transactionId: string;
+	transactionKey: string;
 }
 
 /**
- * One Amazon Finances document as a balanced double-entry transaction: the
- * resolved, deduplicated, flattened form of the source document. Its postings
- * live in amzfact_ledger_posting and its per-SKU dimension in
- * amzfact_ledger_item.
+ * One SKU of one booked sale (a deferred shipment record or a title transfer):
+ * its units, its dates and its settlement link. No money; the sale's money is
+ * on its postings.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzfact_ledger_saleLine {
+	/**
+	 * The sale transaction's dateBooked, YYYY-MM-DD
+	 */
+	dateBooked: PlainDateColumn;
+	/**
+	 * The order's purchase day in its marketplace zone, from ALL_ORDERS; null when ALL_ORDERS has no row for the order
+	 */
+	dateOrder: PlainDateColumn | null;
+	/**
+	 * The release transaction's dateBooked; null until the release record is stored
+	 */
+	dateReleased: PlainDateColumn | null;
+	/**
+	 * Deposit instant of the settlement in settlementId, as its settlement summary states it; null until that summary is stored
+	 */
+	depositAt: InstantColumn | null;
+	/**
+	 * ALL_ORDERS fulfillment_channel of the order line
+	 */
+	fulfillmentChannel: string | null;
+	/**
+	 * Marketplace of the sale, as on its transaction
+	 */
+	marketplaceId: string;
+	/**
+	 * Amazon sellingPartnerId of the sale
+	 */
+	merchantId: string;
+	/**
+	 * Amazon order id of the sale
+	 */
+	orderId: string;
+	/**
+	 * The transactionKey of the sale's release, once its release record is stored
+	 */
+	releaseTransactionKey: string | null;
+	/**
+	 * The settlement that paid the sale line: the settlement report's Order rows of the line at the release instant, else the release document's own SETTLEMENT_ID
+	 */
+	settlementId: string | null;
+	/**
+	 * ALL_ORDERS ship_country of the order line
+	 */
+	shipCountry: string | null;
+	/**
+	 * The SHIPMENT_ID of the sale's document, when it names one
+	 */
+	shipmentId: string | null;
+	/**
+	 * Seller SKU, or the empty string when neither the document nor a report names one
+	 */
+	sku: string;
+	/**
+	 * Which source gave the SKU and units: the Finances items, the settlement report or ALL_ORDERS; null when no source names a SKU
+	 */
+	skuSource: string | null;
+	/**
+	 * The sale's amzfact_ledger_transaction
+	 */
+	transactionKey: string;
+	/**
+	 * Units of this SKU the sale shipped, summed over its items
+	 */
+	units: number;
+}
+
+/**
+ * One balanced transaction of a merchant's accrual ledger: a sale, a release,
+ * a refund, a fee, a payout, a day's advertising, an advertising invoice's
+ * true-up, payment or reverse charge, the COGS of a shipped sale or title
+ * transfer, the cost of a replacement, a unit put back in stock, a return loss
+ * for a refunded unit that does not come back to sellable stock, a warehouse
+ * loss Amazon paid for, or another booked event, with its marketplace day and,
+ * where the source has one, its instant. Its postings are in
+ * amzfact_ledger_posting, its sale lines in amzfact_ledger_saleLine and its
+ * diagnostics in amzfact_ledger_diagnostic.
  *
  * Read-only: it is not in `WritableDB`.
  */
 export interface DbTable_amzfact_ledger_transaction {
 	/**
-	 * postedDate of the released emission, or null while still deferred
+	 * The source's instant the transaction is dated by; null only for a day-only source
 	 */
-	authoritativeAt: string | null;
+	bookedAt: InstantColumn | null;
 	/**
-	 * Marketplace-local date of postedAt, YYYY-MM-DD. This is what a period filters on.
+	 * Which event the transaction is booked on: shipment (a sale at its deferred record), posted (the document's own posted instant), release (a release record's instant), the advertising bases adDay (an ad day's advertising) and invoice (an advertising invoice's true-up, reverse charge, or a payment or refund it states), followsCosted (a unit cost transaction, dated with the transaction it costs), customerReturn (a return's restock or return loss, at its return instant) and reimbursementApproval (a reimbursement's restock, return loss or warehouse loss, at its approval instant)
 	 */
-	bookedDate: PlainDateColumn;
+	bookingBasis: string;
 	/**
-	 * ISO currency of every money column on the row and on its postings. The document's own code where it states one, the marketplace default otherwise.
+	 * ISO currency of every money column of the transaction and its postings
 	 */
 	currency: string;
 	/**
-	 * Amazon's DEFERRED_TRANSACTION_ID as the document carries it
+	 * The day the transaction is booked on, YYYY-MM-DD: the day of bookedAt in the marketplace's time zone, or for a document with no marketplace or an unlisted one in the merchant's region zone; for an ad day, the advertising report's day as reported; for an advertising invoice's true-up or reverse charge, the invoice's last day, and for a payment or refund it states, the payment attempt day, both as the invoice states them. Never null.
+	 */
+	dateBooked: PlainDateColumn;
+	/**
+	 * The DEFERRED_TRANSACTION_ID the document names, if any
 	 */
 	deferredTransactionId: string | null;
 	/**
-	 * Amazon's document description; part of what decides the kind
+	 * The source document's description, part of what decides the kind; for an ad day's advertising, the ad product; for an advertising invoice's true-up, payment, refund or reverse charge, the invoice id; for a unit cost transaction, COGS or Replacement cost; for a restock, Customer return, Inventory reimbursement, Replaced unit put back in stock or Warehouse loss reversed; for a return loss, Customer return not restocked or Customer return reimbursed in cash; for a warehouse loss, its reimbursement reason
 	 */
 	description: string;
+	/**
+	 * The Finances transactionId of the document the transaction is keyed by; null when no Finances document keys it (an ad day's advertising, an advertising invoice's true-up, payment, refund or reverse charge, a unit cost transaction, a restock, a return loss or a warehouse loss)
+	 */
+	financeTransactionId: string | null;
+	/**
+	 * The FINANCIAL_EVENT_GROUP_ID the document names, if any
+	 */
 	financialEventGroupId: string | null;
 	/**
-	 * SHIPMENT_ID for a sale, REFUND_ID for a refund, the document id otherwise. Refunds never carry a shipment id, so the discriminator has to be per-kind or partial refunds merge.
+	 * The beancount flag: * for a booked fact, ! for a provisional booking (an unclassified document, a transaction with a posting to an Unclassified account, or an ad day whose advertising report is not final yet)
 	 */
-	groupId: string;
+	flag: string;
 	/**
-	 * Which identifier supplied groupId; null when the document carries none
-	 */
-	groupIdName: string | null;
-	/**
-	 * Which economic event this is, read from transactionType and description together
+	 * Which economic event the transaction is, read from the Finances transactionType and description together; replacementShipment for a sale release record that names no deferred record and totals zero (a free replacement order), booked with no sale line; release for a release record; unclassified for a provisional booking; advertising for the advertising sources; cogs for the cost of goods of a sale or title transfer; replacementCost for the cost of a free replacement shipment's units, an expense of its own; restock for units put back in stock (a sellable customer return, an FBA reimbursement in kind, or a warehouse loss Amazon takes its payment back for), crediting the account their cost was in; returnLoss for refunded units that do not come back to sellable stock (an unsellable, donated or disposed-of return, or a unit Amazon pays for in cash), moving their cost to its own expense account; warehouseLoss for units Amazon lost or damaged in its warehouses or inbound and paid for; reverseCharge for the VAT the seller self-assesses on an advertising invoice issued without VAT from another country
 	 */
 	kind: string;
 	/**
-	 * Marketplace the document belongs to. Never an attribution here: every posting names its own marketplace through the account's Amazon:<sp>:<mp> scope segments.
+	 * The transactionKey of the transaction this one depends on: for a release, the sale or refund it releases, whether or not that transaction is stored; for a unit cost transaction, the transaction it costs; for a restock or return loss of an order, the sale, title transfer or replacement shipment whose costed unit it takes; for a warehouse loss's restock, the warehouse loss; for a REVERSAL_REIMBURSEMENT inventory reimbursement that names an order, the refund it pays back; null otherwise
+	 */
+	linkKey: string | null;
+	/**
+	 * Marketplace of the source document, or the empty string when it names none. The accounts' Amazon:<sellingPartnerId>:<marketplaceId> scope segments carry the same value.
 	 */
 	marketplaceId: string;
 	/**
@@ -2386,52 +2240,57 @@ export interface DbTable_amzfact_ledger_transaction {
 	 */
 	merchantId: string;
 	/**
-	 * Amazon order id; the empty string on a document that names no order
+	 * Amazon order id of the source document; null when it names none
 	 */
-	orderId: string;
+	orderId: string | null;
 	/**
-	 * Finances postedDate of the surviving emission, as the exact string the export writes: YYYY-MM-DDTHH:MM:SSZ. TEXT, not a timestamp: a timestamp column would re-format the value on the way back out, and the export needs this exact string.
-	 */
-	postedAt: string;
-	/**
-	 * Which compiled projection logic wrote this row; the first version is 1. Without wholesale rebuilds, rows written by older logic persist after a change and this is the only thing that marks them.
+	 * Which compiled ledger logic wrote this row
 	 */
 	projectionVersion: number;
 	/**
-	 * postedDate of the superseded provisional emission, or null when we hold none
+	 * The rebuild key: every Finances document of one order with that order's unit costs, restocks and return losses, one Finances document that names no order, an in-kind FBA reimbursement whose order is not known, an FBA warehouse loss with its reversals, every advertising transaction of one marketplace and ad day, or every true-up, payment, refund and reverse charge of one marketplace's advertising invoices. A unit cost transaction shares the key of the transaction it costs. A write deletes and rewrites all rows of a rebuild key together.
 	 */
-	provisionalAt: string | null;
+	rebuildKey: string;
+	/**
+	 * The REFUND_ID the document names, if any
+	 */
 	refundId: string | null;
 	/**
-	 * Sum of every posting. Zero exactly when totalAmount agrees with the breakdown tree AND every leaf found an account; non-zero names the size of whichever failed. A document is UNBALANCED when abs(residual) >= 0.005, which is how that diagnostic is derived rather than stored twice.
+	 * The RELEASE_TRANSACTION_ID the document names, if any
+	 */
+	releaseTransactionId: string | null;
+	/**
+	 * Sum of the postings before the imbalance plug: zero when the total agrees with the breakdown and every leaf found an account; otherwise the amount parked in Equity:…:Imbalance
 	 */
 	residual: number;
+	/**
+	 * The SETTLEMENT_ID the source document names, as Amazon files it
+	 */
 	settlementId: string | null;
+	/**
+	 * The SHIPMENT_ID the document names; for an inbound charge that names none, the FBA shipment id its ORDER_ID or an item's TRANSACTION_ID carries; null otherwise
+	 */
 	shipmentId: string | null;
 	/**
-	 * Whether the amounts are Amazon's forecast or the settled figure. Authoritative exactly when transactionStatus is RELEASED, so provisional IS the deferred state; it is the only carrier of that.
+	 * What produced the transaction: finance (a Finances document by its own rule), financeRelease (a release record moving money from Deferred to Clearing), unclassified (a document the ledger books provisionally), the advertising sources, unitCost (the configured unit cost of the units a sale, title transfer or replacement shipment takes out of stock), fbaReturn (an FBA customer returns row: a restock or a return loss) and fbaReimbursement (an FBA reimbursements row: a restock, a return loss or a warehouse loss)
 	 */
-	status: string;
+	source: string;
 	/**
-	 * Document id this emission supersedes (Amazon's DEFERRED_TRANSACTION_ID), or null. This is what the writer deletes by, instead of deleting a date range.
-	 */
-	supersededTransactionId: string | null;
-	/**
-	 * The document's own totalAmount, UNNEGATED: what the settlement leg posts. Amazon published it independently of the breakdown tree, which is why the two agreeing is a fact being checked.
+	 * The source's own total, unnegated: what the settling posting moves. Published by the source independently of its breakdown, which is why the two agreeing is a check. An ad day's advertising has no published total: its settling posting is the AdvertisingPayable credit, minus the sum of its debits. The same holds for an advertising invoice's true-up and refund, whose settling posting is the AdvertisingPayable credit, for its payment, whose settling posting is the Transit credit, and for its reverse charge, whose settling posting is the credit to Tax:ReverseCharge of the payer's country. A unit cost transaction, a restock or a warehouse loss has no published total either: its totalAmount is the sum of its Inventory postings, and a return loss's the sum of its ReturnLoss postings.
 	 */
 	totalAmount: number;
 	/**
-	 * Amazon's Finances document id; the whole primary key, since one document is one transaction
+	 * The transaction's identity within the merchant: its source and the source's own identifiers, joined by a tab-separated composite key (for a Finances transaction, fin and the Finances transactionId it is keyed by; for an ad day's advertising, ads, the marketplace, the ad day, the ad product and the currency; for an advertising invoice's true-up, adsInvoice and the invoice id; for a payment or refund the invoice states, adsInvoicePayment or adsInvoiceRefund and the invoice id; for its reverse charge, adsInvoiceReverseCharge and the invoice id; for the unit cost of a sale, title transfer or replacement shipment, unitCost and the costed transaction's key; for a customer return's restock or return loss, fbaReturn, the return instant, the order, the FNSKU and the returns row's index; for an FBA reimbursement's restock, fbaReimbursement, the reimbursement id and the row's index, and for the return loss or warehouse loss of its cash units the same followed by cash). A recomputation of the same sources gives the same key.
 	 */
-	transactionId: string;
+	transactionKey: string;
 	/**
-	 * Amazon's transactionStatus: RELEASED, DEFERRED, DEFERRED_RELEASED
+	 * Amazon's Finances transactionStatus of that document, as stored. Carried as metadata only: the ledger pairs and classifies documents by their deferral context and release links.
 	 */
 	transactionStatus: string | null;
 	/**
-	 * Amazon's own transactionType, carried as metadata rather than merged into an account name
+	 * Amazon's Finances transactionType of that document
 	 */
-	transactionType: string;
+	transactionType: string | null;
 }
 
 /**
@@ -4300,10 +4159,7 @@ export interface DbTable_amzspapi_fbaInventory_v1__InventorySummary {
 
 /**
  * One SP-API Finances 2024-06-19 transaction event per (merchantId,
- * transactionKey), with the full event in doc. The itemProjection columns
- * describe this row's projection into
- * amzspapi_finances_v20240619__TransactionItemSummary and are authoritative
- * only about that projection, never about the Amazon document.
+ * transactionKey), with the full event in doc.
  *
  * Read-only: it is not in `WritableDB`.
  */
@@ -4313,9 +4169,6 @@ export interface DbTable_amzspapi_finances_v20240619__Transaction {
 	 * The full Transaction object from the API; persisted as JSONB
 	 */
 	doc: Json;
-	itemProjectionItemCount: number | null;
-	itemProjectionSourceUpdatedAt: InstantColumn | null;
-	itemProjectionVersion: number | null;
 	marketplaceId: string | null;
 	/**
 	 * Amazon Seller ID
@@ -4336,140 +4189,6 @@ export interface DbTable_amzspapi_finances_v20240619__Transaction {
 	transactionKey: string;
 	transactionStatus: string | null;
 	transactionType: string | null;
-	updatedAt: InstantColumn;
-}
-
-/**
- * Completeness state of the Finance item projection, one row per merchant.
- * READY means the projected item rows can be trusted for the recorded
- * extractorVersion; BACKFILLING, VERIFYING, STALE and FAILED all mean they
- * cannot. Having rows, or merely having agreeing counts, does not establish
- * readiness.
- *
- * Read-only: it is not in `WritableDB`.
- */
-export interface DbTable_amzspapi_finances_v20240619__TransactionItemProjectionState {
-	createdAt: InstantColumn;
-	cursorTransactionKey: string | null;
-	/**
-	 * Extractor version this state describes; first version is 1
-	 */
-	extractorVersion: number;
-	/**
-	 * Transactions whose extraction produced an invalid diagnostic
-	 */
-	invalidTransactionCount: number;
-	lastError: string | null;
-	/**
-	 * Amazon Seller ID; the whole primary key
-	 */
-	merchantId: string;
-	/**
-	 * Transactions whose markers, ordinals, counts or source times disagreed
-	 */
-	mismatchedTransactionCount: number;
-	/**
-	 * Transactions processed by the current run
-	 */
-	processedTransactionCount: number;
-	/**
-	 * Item-summary rows counted at the last verification
-	 */
-	projectedItemCount: number;
-	snapshotMaxTransactionKey: string | null;
-	/**
-	 * Expected item count summed from parent markers at the last verification
-	 */
-	sourceItemCount: number;
-	/**
-	 * Source Transactions counted at the last verification
-	 */
-	sourceTransactionCount: number;
-	/**
-	 * Start of the current backfill/verification run
-	 */
-	startedAt: InstantColumn;
-	/**
-	 * BACKFILLING | VERIFYING | READY | STALE | FAILED
-	 */
-	status: string;
-	updatedAt: InstantColumn;
-	verifiedAt: InstantColumn | null;
-}
-
-/**
- * Normalized projection of one items entry of an
- * amzspapi_finances_v20240619__Transaction row, keyed by its zero-based
- * itemIndex. The parent transaction stays authoritative for type, status,
- * time, marketplace and order; the amounts here pre-sum top-level breakdowns
- * only, so nothing is double counted. Trust these rows only when the
- * merchant's projection state is READY for your extractor version.
- *
- * Read-only: it is not in `WritableDB`.
- */
-export interface DbTable_amzspapi_finances_v20240619__TransactionItemSummary {
-	/**
-	 * Sum of every top-level breakdown amount; zero when none
-	 */
-	allTopLevelBreakdownsAmount: number;
-	/**
-	 * Sum of every top-level AmazonFees breakdown amount; zero when none
-	 */
-	amazonFeesAmount: number;
-	asin: string | null;
-	contextType: string | null;
-	createdAt: InstantColumn;
-	/**
-	 * Sum of every top-level DigitalServicesFee breakdown amount; zero when none
-	 */
-	digitalServicesFeeAmount: number;
-	/**
-	 * Version of the pure extractor that produced this row; first version is 1
-	 */
-	extractorVersion: number;
-	/**
-	 * Count of top-level AmazonFees + DigitalServicesFee breakdowns
-	 */
-	feeBreakdownCount: number;
-	/**
-	 * Sorted distinct non-empty currency codes seen on the relevant fee breakdowns
-	 */
-	feeCurrencyCodes: string[];
-	/**
-	 * Relevant fee breakdowns whose amount carried no currency code
-	 */
-	feeMissingCurrencyCount: number;
-	/**
-	 * Zero-based position of this item in the source doc.items array
-	 */
-	itemIndex: number;
-	/**
-	 * Amazon Seller ID; parent-key member
-	 */
-	merchantId: string;
-	quantityShipped: number | null;
-	refundPhaseKey: string | null;
-	sku: string | null;
-	/**
-	 * The parent Transaction updatedAt value this row was extracted from
-	 */
-	sourceUpdatedAt: InstantColumn;
-	/**
-	 * Count of all top-level breakdowns
-	 */
-	topLevelBreakdownCount: number;
-	/**
-	 * Sorted distinct non-empty currency codes seen on all top-level breakdowns
-	 */
-	topLevelCurrencyCodes: string[];
-	/**
-	 * Top-level breakdowns whose amount carried no currency code
-	 */
-	topLevelMissingCurrencyCount: number;
-	/**
-	 * Parent amzspapi_finances_v20240619__Transaction.transactionKey
-	 */
-	transactionKey: string;
 	updatedAt: InstantColumn;
 }
 
@@ -7492,6 +7211,7 @@ export interface DB {
 	amazon_sales_and_traffic: DbView_amazon_sales_and_traffic;
 	amazon_store: DbTable_amazon_store;
 	amazon_vendor_adapi_profile: DbTable_amazon_vendor_adapi_profile;
+	amzadapi_billing_v3__invoice: DbTable_amzadapi_billing_v3__invoice;
 	amzadapi_eligibility_v1__program: DbTable_amzadapi_eligibility_v1__program;
 	amzadapi_exports_v1__ad: DbTable_amzadapi_exports_v1__ad;
 	amzadapi_exports_v1__adgroup: DbTable_amzadapi_exports_v1__adgroup;
@@ -7499,25 +7219,21 @@ export interface DB {
 	amzadapi_exports_v1__target: DbTable_amzadapi_exports_v1__target;
 	amzadapi_reports_v1__product01__byDay: DbTable_amzadapi_reports_v1__product01__byDay;
 	amzadapi_reports_v1__search_asin_placement__byDay: DbTable_amzadapi_reports_v1__search_asin_placement__byDay;
-	amzagg_profit__adsDay: DbTable_amzagg_profit__adsDay;
-	amzagg_profit__adsStreamDay: DbTable_amzagg_profit__adsStreamDay;
-	amzagg_profit__expenseDay: DbTable_amzagg_profit__expenseDay;
-	amzagg_profit__orderItem: DbTable_amzagg_profit__orderItem;
-	amzagg_profit__orderItemClosedChange: DbTable_amzagg_profit__orderItemClosedChange;
-	amzagg_profit__orderItemContextMerchant: DbTable_amzagg_profit__orderItemContextMerchant;
+	amzagg_profit__adSkuDay: DbTable_amzagg_profit__adSkuDay;
+	amzagg_profit__ledgerDay: DbTable_amzagg_profit__ledgerDay;
+	amzagg_profit__ledgerProductDay: DbTable_amzagg_profit__ledgerProductDay;
+	amzagg_profit__openOrderLine: DbTable_amzagg_profit__openOrderLine;
 	amzagg_profit__orderItemContextSku: DbTable_amzagg_profit__orderItemContextSku;
-	amzagg_profit__orderItemCostTimeline: DbTable_amzagg_profit__orderItemCostTimeline;
-	amzagg_profit__orderItemDay: DbTable_amzagg_profit__orderItemDay;
-	amzagg_profit__orderItemProjectionState: DbTable_amzagg_profit__orderItemProjectionState;
 	amzagg_profit__orderItemSurchargeDay: DbTable_amzagg_profit__orderItemSurchargeDay;
 	amzfact_fnsku_fbaInventory_history: DbTable_amzfact_fnsku_fbaInventory_history;
 	amzfact_fnsku_fbaInventory_latest: DbTable_amzfact_fnsku_fbaInventory_latest;
 	amzfact_fnsku_ledger_estimate: DbTable_amzfact_fnsku_ledger_estimate;
 	amzfact_fnsku_ledger_history: DbTable_amzfact_fnsku_ledger_history;
 	amzfact_fnsku_ledger_latest: DbTable_amzfact_fnsku_ledger_latest;
-	amzfact_ledger_build: DbTable_amzfact_ledger_build;
-	amzfact_ledger_item: DbTable_amzfact_ledger_item;
+	amzfact_ledger_diagnostic: DbTable_amzfact_ledger_diagnostic;
+	amzfact_ledger_merchant: DbTable_amzfact_ledger_merchant;
 	amzfact_ledger_posting: DbTable_amzfact_ledger_posting;
+	amzfact_ledger_saleLine: DbTable_amzfact_ledger_saleLine;
 	amzfact_ledger_transaction: DbTable_amzfact_ledger_transaction;
 	amzfact_sku_identity: DbTable_amzfact_sku_identity;
 	amzms_v1__adgroups: DbTable_amzms_v1__adgroups;
@@ -7575,9 +7291,6 @@ export interface DB {
 	amzspapi_fbaInbound_v2024__ShipmentItem: DbTable_amzspapi_fbaInbound_v2024__ShipmentItem;
 	amzspapi_fbaInventory_v1__InventorySummary: DbTable_amzspapi_fbaInventory_v1__InventorySummary;
 	amzspapi_finances_v20240619__Transaction: DbTable_amzspapi_finances_v20240619__Transaction;
-	amzspapi_finances_v20240619__TransactionItemProjectionState:
-		DbTable_amzspapi_finances_v20240619__TransactionItemProjectionState;
-	amzspapi_finances_v20240619__TransactionItemSummary: DbTable_amzspapi_finances_v20240619__TransactionItemSummary;
 	amzspapi_orders_v0__Order: DbTable_amzspapi_orders_v0__Order;
 	amzspapi_orders_v0__OrderItem: DbTable_amzspapi_orders_v0__OrderItem;
 	amzspapi_searchCatalogItems_v2020__asin: DbTable_amzspapi_searchCatalogItems_v2020__asin;
