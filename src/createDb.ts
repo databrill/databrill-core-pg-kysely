@@ -1,4 +1,4 @@
-import { Deferred, Effect, Either, Exit } from "effect";
+import { Deferred, Effect, Exit, Result } from "effect";
 import { Kysely, PostgresDialect } from "kysely";
 import type { ReadonlyKysely } from "kysely/readonly";
 import { tryOrOperationError } from "./tryOrOperationError.ts";
@@ -188,9 +188,9 @@ export interface TenantDb {
  * Connect to a Databrill tenant database.
  *
  * ```ts
- * import { Effect, Either } from "effect";
+ * import { Effect, Result } from "effect";
  *
- * const { db, write, destroy } = Either.getOrThrowWith(
+ * const { db, write, destroy } = Result.getOrThrowWith(
  * 	createDb({
  * 		connectionString: process.env.DATABRILL_DATABASE_URL,
  * 		schema: "w123456789",
@@ -215,20 +215,20 @@ export interface TenantDb {
  * `sslmode`" section.
  *
  * Requires `Temporal`, from the runtime itself or from
- * `temporal-polyfill/global`. A missing one is a `Left` returned before any pool
- * is created, carrying the guidance from {@link requireTemporal} — which reaches
- * the caller only through an unwrap that keeps the `Left`, so the examples here
- * use `Either.getOrThrowWith(…, (error) => error)`. `Either.getOrThrow` replaces
- * it with `Error("getOrThrow called on a Left")`.
+ * `temporal-polyfill/global`. A missing one is a failed `Result` returned before
+ * any pool is created, carrying the guidance from {@link requireTemporal}. Both
+ * `Result.getOrThrow` and the `Result.getOrThrowWith(…, (error) => error)` the
+ * examples here use throw that `Error` itself, so the guidance is what reaches
+ * the caller.
  */
-export function createDb(options: string | CreateDbOptions): Either.Either<TenantDb, Error> {
+export function createDb(options: string | CreateDbOptions): Result.Result<TenantDb, Error> {
 	// Pool and Kysely construction open no connections. Database work starts
 	// only when the caller executes a query.
-	return Either.gen(function* () {
+	return Result.gen(function* () {
 		yield* requireTemporal();
 		const { schema, ...poolConfig } = typeof options === "string" ? { connectionString: options } : options;
 		if (schema !== undefined && !isPlainIdentifier(schema)) {
-			return yield* Either.left(
+			return yield* Result.fail(
 				new Error(
 					`Invalid schema name ${JSON.stringify(schema)}: expected a plain Postgres identifier ` +
 						`such as "public" or "w123456789".`,

@@ -1,4 +1,4 @@
-import { Cause, Effect, Either, Exit } from "effect";
+import { Cause, Effect, Exit, Result } from "effect";
 import { assertEitherFailure } from "./assertEitherFailure.ts";
 /**
  * Unit tests for the connection factory's non-query behaviour.
@@ -197,7 +197,7 @@ function createInspectedDb(options: string | CreateDbOptions): TenantDb & { read
 		return original.call(this, event, listener);
 	};
 	try {
-		const tenant = Either.getOrThrow(createDb(options));
+		const tenant = Result.getOrThrow(createDb(options));
 		assert(nativePool !== undefined, "factory must register its pool listener");
 		return { ...tenant, nativePool };
 	} finally {
@@ -208,15 +208,15 @@ function createInspectedDb(options: string | CreateDbOptions): TenantDb & { read
 Deno.test("createDb - each synchronous call returns a separate pool without opening connections", async () => {
 	const first = createDb(UNUSED_URL);
 	const second = createDb(UNUSED_URL);
-	assert(Either.isRight(first));
-	assert(Either.isRight(second));
+	assert(Result.isSuccess(first));
+	assert(Result.isSuccess(second));
 	try {
-		assert(first.right.pool !== second.right.pool);
-		assertEquals(first.right.pool.totalCount, 0);
-		assertEquals(second.right.pool.totalCount, 0);
+		assert(first.success.pool !== second.success.pool);
+		assertEquals(first.success.pool.totalCount, 0);
+		assertEquals(second.success.pool.totalCount, 0);
 	} finally {
-		await Effect.runPromise(first.right.destroy());
-		await Effect.runPromise(second.right.destroy());
+		await Effect.runPromise(first.success.destroy());
+		await Effect.runPromise(second.success.destroy());
 	}
 });
 
@@ -241,8 +241,10 @@ Deno.test("createDb - concurrent destroy shares one failure and a later call ret
 	pending.reject(failure);
 	for (const result of await Promise.all([first, second])) {
 		assert(Exit.isFailure(result));
-		assert(Cause.isFailType(result.cause));
-		assertEquals(result.cause.error, failure);
+		assertEquals(result.cause.reasons.length, 1);
+		const [reason] = result.cause.reasons;
+		assert(reason !== undefined && Cause.isFailReason(reason));
+		assertEquals(reason.error, failure);
 	}
 
 	await Effect.runPromise(close);
@@ -270,8 +272,10 @@ Deno.test("createDb - pool query captures synchronous driver throws and rejectio
 		for (let attempt = 0; attempt < 2; attempt++) {
 			const result = await Effect.runPromiseExit(query);
 			assert(Exit.isFailure(result));
-			assert(Cause.isFailType(result.cause));
-			assertEquals(result.cause.error, failure);
+			assertEquals(result.cause.reasons.length, 1);
+			const [reason] = result.cause.reasons;
+			assert(reason !== undefined && Cause.isFailReason(reason));
+			assertEquals(reason.error, failure);
 		}
 		assertEquals(calls, 2);
 	} finally {

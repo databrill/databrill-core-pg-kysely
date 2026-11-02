@@ -1,4 +1,4 @@
-import { Either } from "effect";
+import { Result } from "effect";
 import type { TenantTlsOptions } from "./createDb.ts";
 
 // `sslmode`, read off the connection string and applied with LIBPQ's meanings.
@@ -8,7 +8,7 @@ import type { TenantTlsOptions } from "./createDb.ts";
 // which query parameters this package consumes is an implementation detail.
 // The package's own tests import it by relative path.
 //
-// URL parsing uses the runtime's `URL` and `URLSearchParams`; Either exposes
+// URL parsing uses the runtime's `URL` and `URLSearchParams`; a Result exposes
 // validation failures without adding a second connection-string parser.
 //
 // Why hand-rolled rather than `pg-connection-string`'s `uselibpqcompat=true`:
@@ -92,21 +92,21 @@ const CONSUMED_PARAMETERS: readonly string[] = ["sslmode", "uselibpqcompat"];
 export function tlsConfigForSslMode(
 	mode: string,
 	ca: string | undefined,
-): Either.Either<boolean | ResolvedTlsConfig, Error> {
+): Result.Result<boolean | ResolvedTlsConfig, Error> {
 	switch (mode) {
 		case "disable":
-			return Either.right(false);
+			return Result.succeed(false);
 		case "allow":
 		case "prefer":
 		case "require":
-			return Either.right({ rejectUnauthorized: false });
+			return Result.succeed({ rejectUnauthorized: false });
 		case "verify-ca":
 			// The same refusal `pg-connection-string`'s libpq-compat branch
 			// makes, and for the same reason: `verify-ca` against the public
 			// root store accepts any publicly-trusted certificate for any
 			// hostname, which is not what anyone writing `verify-ca` wants.
 			if (ca === undefined) {
-				return Either.left(
+				return Result.fail(
 					new Error(
 						`sslmode=verify-ca needs a certificate authority, and none was supplied. Pass the ` +
 							`certificate contents as ssl: { ca } — an explicit ssl option takes precedence over ` +
@@ -116,14 +116,14 @@ export function tlsConfigForSslMode(
 					),
 				);
 			}
-			return Either.right({
+			return Result.succeed({
 				rejectUnauthorized: true,
 				checkServerIdentity: () => undefined,
 			});
 		case "verify-full":
-			return Either.right({ rejectUnauthorized: true });
+			return Result.succeed({ rejectUnauthorized: true });
 		default:
-			return Either.left(
+			return Result.fail(
 				new Error(
 					`Invalid sslmode ${JSON.stringify(mode)} in the connection string: expected one of ` +
 						`${SSL_MODES.join(", ")}. Modes are matched exactly, so the spelling is case-sensitive.`,
@@ -160,8 +160,8 @@ export function tlsConfigForSslMode(
 export function resolveSslMode(
 	connectionString: string,
 	callerSsl: boolean | TenantTlsOptions | undefined,
-): Either.Either<SslModeResolution, Error> {
-	return Either.gen(function* () {
+): Result.Result<SslModeResolution, Error> {
+	return Result.gen(function* () {
 		const unchanged: SslModeResolution = {
 			connectionString,
 			ssl: callerSsl,

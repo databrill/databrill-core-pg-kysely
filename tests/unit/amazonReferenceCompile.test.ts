@@ -1,4 +1,4 @@
-import { Either } from "effect";
+import { Result } from "effect";
 /** Compiled-SQL rules for the AmazonMarketplace and AmazonCountry readers. No database. */
 
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.19";
@@ -9,7 +9,7 @@ import { createCanonicalQueryBuilder } from "../../src/canonical/execute.ts";
 const db = createCanonicalQueryBuilder();
 
 Deno.test("AmazonMarketplace compile - aliases source columns to field names and binds every filter value", () => {
-	const compiled = Either.getOrThrow(compileAmazonMarketplaceQuery(db, {
+	const compiled = Result.getOrThrow(compileAmazonMarketplaceQuery(db, {
 		marketplaceIds: ["MP'; DROP TABLE x; --"],
 		marketplaceCodes: ["DE"],
 		countryCodes: ["DE"],
@@ -21,7 +21,7 @@ Deno.test("AmazonMarketplace compile - aliases source columns to field names and
 });
 
 Deno.test("AmazonCountry compile - reads amazon_country with aliased columns and bound filters", () => {
-	const compiled = Either.getOrThrow(compileAmazonCountryQuery(db, { countryCodes: ["US"], regions: ["NA"] }));
+	const compiled = Result.getOrThrow(compileAmazonCountryQuery(db, { countryCodes: ["US"], regions: ["NA"] }));
 	assertStringIncludes(compiled.sql, `from "amazon_country"`);
 	assertStringIncludes(compiled.sql, `"country_name" as "countryName"`);
 	assertEquals(compiled.parameters, ["US", "NA"]);

@@ -1,4 +1,4 @@
-import { Either } from "effect";
+import { Result } from "effect";
 import { tryOrOperationError } from "./tryOrOperationError.ts";
 
 /**
@@ -50,8 +50,8 @@ export class UnrepresentableTemporalValueError extends Error {
 }
 
 /** `timestamptz` — an exact instant. */
-export function parseInstant(value: string): Either.Either<Temporal.Instant, UnrepresentableTemporalValueError> {
-	return Either.try({
+export function parseInstant(value: string): Result.Result<Temporal.Instant, UnrepresentableTemporalValueError> {
+	return Result.try({
 		try: () => Temporal.Instant.from(value),
 		catch: (cause) => new UnrepresentableTemporalValueError(value, "Temporal.Instant", cause),
 	});
@@ -60,16 +60,16 @@ export function parseInstant(value: string): Either.Either<Temporal.Instant, Unr
 /** `timestamp without time zone` — a wall-clock reading, deliberately zone-free. */
 export function parsePlainDateTime(
 	value: string,
-): Either.Either<Temporal.PlainDateTime, UnrepresentableTemporalValueError> {
-	return Either.try({
+): Result.Result<Temporal.PlainDateTime, UnrepresentableTemporalValueError> {
+	return Result.try({
 		try: () => Temporal.PlainDateTime.from(value),
 		catch: (cause) => new UnrepresentableTemporalValueError(value, "Temporal.PlainDateTime", cause),
 	});
 }
 
 /** `date` — a calendar day with no time and no zone. */
-export function parsePlainDate(value: string): Either.Either<Temporal.PlainDate, UnrepresentableTemporalValueError> {
-	return Either.try({
+export function parsePlainDate(value: string): Result.Result<Temporal.PlainDate, UnrepresentableTemporalValueError> {
+	return Result.try({
 		try: () => Temporal.PlainDate.from(value),
 		catch: (cause) => new UnrepresentableTemporalValueError(value, "Temporal.PlainDate", cause),
 	});
@@ -84,7 +84,7 @@ export function parsePlainDate(value: string): Either.Either<Temporal.PlainDate,
  * package has never heard of — none of which an `instanceof` chain against the
  * current global would catch.
  */
-export function isTemporalValue(value: unknown): Either.Either<boolean, Error> {
+export function isTemporalValue(value: unknown): Result.Result<boolean, Error> {
 	return tryOrOperationError(() => {
 		return Object.prototype.toString.call(value).startsWith("[object Temporal.");
 	});
@@ -109,10 +109,10 @@ export function isTemporalValue(value: unknown): Either.Either<boolean, Error> {
  * offset preceding it already fixes the instant exactly, which makes this a
  * lossless narrowing to what the column can hold.
  */
-export function temporalToPostgres(value: unknown): Either.Either<unknown, Error> {
-	return Either.gen(function* () {
+export function temporalToPostgres(value: unknown): Result.Result<unknown, Error> {
+	return Result.gen(function* () {
 		if (Array.isArray(value)) {
-			return yield* Either.all(value.map(temporalToPostgres));
+			return yield* Result.all(value.map(temporalToPostgres));
 		}
 		if (!(yield* isTemporalValue(value))) {
 			return value;
@@ -134,10 +134,10 @@ function stripZoneAnnotation(text: string): string {
  * `ReferenceError: Temporal is not defined` from inside a driver callback,
  * which tells the customer nothing about what to do.
  */
-export function requireTemporal(): Either.Either<void, Error> {
-	return Either.gen(function* () {
+export function requireTemporal(): Result.Result<void, Error> {
+	return Result.gen(function* () {
 		if (!("Temporal" in globalThis)) {
-			return yield* Either.left(
+			return yield* Result.fail(
 				new Error(
 					"@databrill/core-pg-kysely returns Temporal values, but this runtime has no Temporal global. " +
 						'Load a polyfill before connecting: import "temporal-polyfill/global". For the TYPES, ' +

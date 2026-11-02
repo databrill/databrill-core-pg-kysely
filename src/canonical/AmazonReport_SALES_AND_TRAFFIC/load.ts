@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import { type AliasedRawBuilder, type CompiledQuery, type Expression, type Kysely, type RawBuilder, sql } from "kysely";
 import { tryOrOperationError } from "../../tryOrOperationError.ts";
 import type { DB } from "../../types.ts";
@@ -202,8 +202,8 @@ export function loadAmazonReportSalesAndTraffic(
 			};
 		}
 
-		const window = yield* resolveCanonicalWindow(request.window, freshness.anchorDate);
-		const measures = yield* selectMeasures(request, source.sourceGrainLevel);
+		const window = yield* Effect.fromResult(resolveCanonicalWindow(request.window, freshness.anchorDate));
+		const measures = yield* Effect.fromResult(selectMeasures(request, source.sourceGrainLevel));
 		const rows = yield* runLevelQuery(db, runner, {
 			request,
 			keyColumns: keyColumnsForMeasures(spec, measures),
@@ -230,8 +230,8 @@ export function loadAmazonReportSalesAndTraffic(
 function selectMeasures(
 	request: AmazonReportSalesAndTrafficRequest,
 	sourceGrainLevel: CanonicalLevel,
-): Either.Either<readonly CanonicalMeasure[], Error> {
-	return Either.gen(function* () {
+): Result.Result<readonly CanonicalMeasure[], Error> {
+	return Result.gen(function* () {
 		const atSourceGrain = request.level === sourceGrainLevel && request.timeGranularity === "DAY";
 		const offered = measuresForLevel(AMAZON_REPORT_SALES_AND_TRAFFIC, request.level)
 			.filter((measure) => measure.additivity.kind !== "NON_ADDITIVE" || atSourceGrain);
@@ -242,7 +242,7 @@ function selectMeasures(
 		}
 		const unknown = asked.filter((name) => !offered.some((measure) => measure.name === name));
 		if (unknown.length > 0) {
-			return yield* Either.left(
+			return yield* Result.fail(
 				new Error(
 					`AmazonReport_SALES_AND_TRAFFIC does not offer ${unknown.join(", ")} at level ${request.level} / ` +
 						`${request.timeGranularity}. Offered: ${offered.map((measure) => measure.name).join(", ")}`,
@@ -291,7 +291,7 @@ function runLevelQuery(
 	params: LevelQueryParams,
 ): Effect.Effect<readonly AmazonReportSalesAndTrafficRow[], Error> {
 	return Effect.gen(function* () {
-		const rows = yield* executeCompiled(runner, yield* compileLevelQuery(db, params));
+		const rows = yield* executeCompiled(runner, yield* Effect.fromResult(compileLevelQuery(db, params)));
 		return Array.from(rows, (row) => buildRow(row, params.keyColumns, params.measures));
 	});
 }
@@ -300,10 +300,10 @@ function runLevelQuery(
 export function compileLevelQuery(
 	db: Kysely<DB>,
 	params: LevelQueryParams,
-): Either.Either<CompiledQuery<Record<string, CellValue>>, Error> {
-	return Either.gen(function* () {
+): Result.Result<CompiledQuery<Record<string, CellValue>>, Error> {
+	return Result.gen(function* () {
 		const { request, keyColumns, measures } = params;
-		const keyExpressions = yield* Either.all(keyColumns.map((column) => keyExpression(params.sourceKey, column)));
+		const keyExpressions = yield* Result.all(keyColumns.map((column) => keyExpression(params.sourceKey, column)));
 		return yield* tryOrOperationError(() => {
 			const bucket = timeBucket(request.timeGranularity, params.window);
 
@@ -431,8 +431,8 @@ function timeBucket(
  * because Amazon assigns a different parent per marketplace, and `ASIN` selects
  * no marketplace at all because the same ASIN is the same product everywhere.
  */
-function keyExpression(sourceKey: string, column: string): Either.Either<RawBuilder<unknown>, Error> {
-	return Either.gen(function* () {
+function keyExpression(sourceKey: string, column: string): Result.Result<RawBuilder<unknown>, Error> {
+	return Result.gen(function* () {
 		if (column === "currency") {
 			return currencyExpression();
 		}
@@ -445,7 +445,7 @@ function keyExpression(sourceKey: string, column: string): Either.Either<RawBuil
 				case "countryCode":
 					return sql`${sql.ref("s.countryCode")}`;
 			}
-			return yield* Either.left(
+			return yield* Result.fail(
 				new Error(`AmazonReport_SALES_AND_TRAFFIC store levels do not know the key column ${column}`),
 			);
 		}
@@ -463,7 +463,7 @@ function keyExpression(sourceKey: string, column: string): Either.Either<RawBuil
 			case "family":
 				return familyExpression();
 		}
-		return yield* Either.left(
+		return yield* Result.fail(
 			new Error(`AmazonReport_SALES_AND_TRAFFIC product levels do not know the key column ${column}`),
 		);
 	});

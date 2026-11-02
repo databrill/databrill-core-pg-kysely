@@ -1,4 +1,4 @@
-import { Either } from "effect";
+import { Result } from "effect";
 import type {
 	KyselyPlugin,
 	PluginTransformQueryArgs,
@@ -63,7 +63,7 @@ class TemporalParameterTransformer extends OperationNodeTransformer {
 		}
 		return {
 			...transformed,
-			value: Either.getOrThrowWith(temporalToPostgres(transformed.value), (error) => error),
+			value: Result.getOrThrowWith(temporalToPostgres(transformed.value), (error) => error),
 		};
 	}
 
@@ -75,7 +75,7 @@ class TemporalParameterTransformer extends OperationNodeTransformer {
 		return {
 			...transformed,
 			values: transformed.values.map((value) =>
-				Either.getOrThrowWith(temporalToPostgres(value), (error) => error)
+				Result.getOrThrowWith(temporalToPostgres(value), (error) => error)
 			),
 		};
 	}
@@ -89,5 +89,5 @@ function needsRender(value: unknown): boolean {
 	if (Array.isArray(value)) {
 		return value.some(needsRender);
 	}
-	return Either.getOrThrowWith(isTemporalValue(value), (error) => error);
+	return Result.getOrThrowWith(isTemporalValue(value), (error) => error);
 }

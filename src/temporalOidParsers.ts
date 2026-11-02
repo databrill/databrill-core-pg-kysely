@@ -1,4 +1,4 @@
-import { Either } from "effect";
+import { Result } from "effect";
 import { parseInstant, parsePlainDate, parsePlainDateTime } from "./temporalValues.ts";
 
 /**
@@ -50,7 +50,7 @@ export type TemporalOidParser = (value: string) => Temporal.Instant | Temporal.P
 export const temporalOidParsers:
 	& Readonly<Record<number, TemporalOidParser>>
 	& Readonly<Record<typeof OID_DATE | typeof OID_TIMESTAMP | typeof OID_TIMESTAMPTZ, TemporalOidParser>> = {
-		[OID_DATE]: (value) => Either.getOrThrowWith(parsePlainDate(value), (error) => error),
-		[OID_TIMESTAMP]: (value) => Either.getOrThrowWith(parsePlainDateTime(value), (error) => error),
-		[OID_TIMESTAMPTZ]: (value) => Either.getOrThrowWith(parseInstant(value), (error) => error),
+		[OID_DATE]: (value) => Result.getOrThrowWith(parsePlainDate(value), (error) => error),
+		[OID_TIMESTAMP]: (value) => Result.getOrThrowWith(parsePlainDateTime(value), (error) => error),
+		[OID_TIMESTAMPTZ]: (value) => Result.getOrThrowWith(parseInstant(value), (error) => error),
 	};

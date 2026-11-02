@@ -323,7 +323,7 @@ export function loadFreshness(
 	return Effect.gen(function* () {
 		const rows = yield* executeCompiled(
 			runner,
-			yield* tryOrOperationError(() => params.query.compile(db)),
+			yield* Effect.fromResult(tryOrOperationError(() => params.query.compile(db))),
 		);
 		const perStore: readonly StoreFreshness[] = rows.map((row) => ({
 			merchantId: row.merchantId,

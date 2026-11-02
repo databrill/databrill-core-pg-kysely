@@ -48,7 +48,7 @@ npm publish (via dnt) is not done yet; the JSR npm-compat layer is the only
 path for Node today.
 
 Either way, install `effect` alongside it — `deno add npm:effect`, or
-`npm install effect`. This package returns `Either` and `Effect` values, so
+`npm install effect`, Effect 4. This package returns `Result` and `Effect` values, so
 unwrapping one means importing `effect` in your own code, and that import has
 to resolve to YOUR dependency rather than to this package's. It declares a
 range rather than one version so both requests resolve to a single shared
@@ -59,10 +59,10 @@ the program and the runtime executing it came from different copies.
 ## Quickstart
 
 ```ts
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import { checkSchemaCompatibility, createDb } from "@databrill/core-pg-kysely";
 
-const { db, write, destroy } = Either.getOrThrowWith(
+const { db, write, destroy } = Result.getOrThrowWith(
 	createDb({
 		connectionString: Deno.env.get("DATABRILL_DATABASE_URL"),
 		schema: "w123456789",
@@ -92,16 +92,15 @@ Effect programs. Constructing a program does no work; compose it with `yield*` i
 `Effect.runPromise`. The real Kysely builders retain their native Promise APIs.
 
 The connection factory, synchronous validation, Temporal conversion, and canonical query compilation
-return `Either`; `createCanonicalQueryBuilder()` returns a plain Kysely instance.
-An `Either` can also be yielded directly inside an `Effect.gen` program.
+return a `Result`; `createCanonicalQueryBuilder()` returns a plain Kysely instance.
+Inside an `Effect.gen` program, lift a `Result` with `yield* Effect.fromResult(…)`: Effect 4's `Effect.gen` does
+not accept a yielded `Result`.
 
-`Either.getOrThrowWith(…, (error) => error)` rather than the shorter
-`Either.getOrThrow` in every example here, and the difference is not style:
-`getOrThrow` discards the `Left` and throws
-`Error("getOrThrow called on a Left")` in its place, so the reason the call
-failed — an invalid schema name, a certificate path that does not exist, the
-missing-`Temporal` guidance below — never reaches you. Match on the `Either`
-instead wherever you can act on the failure rather than raise it.
+The examples here unwrap with `Result.getOrThrowWith(…, (error) => error)`.
+Effect 4's shorter `Result.getOrThrow` behaves the same: both throw the `Error` the
+call failed with, so the reason — an invalid schema name, a certificate path that
+does not exist, the missing-`Temporal` guidance below — reaches you. Match on the
+`Result` instead wherever you can act on the failure rather than raise it.
 
 The caller owns each acquired handle until `destroy()` succeeds. Execute cleanup
 in a `finally` block when using native async code. Concurrent cleanup calls share
@@ -113,8 +112,8 @@ The `password` option accepts a string. Resolve credentials before calling
 `createDb()`; credential lookup and its errors belong to the caller.
 
 Foreign Error objects retain their identity; non-Error failures retain the
-original value in `cause`. `Effect.runPromiseExit` exposes typed failures without a FiberFailure
-wrapper.
+original value in `cause`. `Effect.runPromise` rejects with the failure itself, and `Effect.runPromiseExit`
+exposes it in the `Exit`, with no wrapper around it.
 
 ## Three entry points
 
@@ -175,7 +174,7 @@ type OpenListing = Selectable<DbView_amazon_listing_open>;
 
 ## Read and write
 
-Calling `createDb()` returns an `Either` containing two Kysely instances sharing one connection pool:
+Calling `createDb()` returns a `Result` containing two Kysely instances sharing one connection pool:
 
 - `db` covers every published table and view. Inserts, updates, deletes,
   and DDL against it are compile-time type errors — it is typed as
@@ -265,10 +264,8 @@ Values come back as `Temporal` objects, so the runtime needs `Temporal`.
 Newer runtimes have it built in; check yours with
 `typeof globalThis.Temporal`. Where it is missing, load a polyfill before
 connecting, `import "temporal-polyfill/global"`. Otherwise `createDb()`
-returns a `Left` whose error explains exactly that, at connection time
-rather than a bare `ReferenceError` on your first row read — provided you
-unwrap it in a way that keeps the error, which is why the examples above use
-`Either.getOrThrowWith` and not `Either.getOrThrow`.
+returns a failed `Result` whose error explains exactly that, at connection time
+rather than a bare `ReferenceError` on your first row read.
 
 TypeScript needs the `Temporal` type declarations too, which is a separate
 question from whether your runtime has the object:
@@ -485,7 +482,7 @@ Calling `createDb()` also provides `pool`, an Effect interface to the connection
 share, for connection metrics and for SQL this package cannot express:
 
 ```ts
-const { db, pool, destroy } = Either.getOrThrowWith(createDb(connectionString), (error) => error);
+const { db, pool, destroy } = Result.getOrThrowWith(createDb(connectionString), (error) => error);
 
 console.log(pool.totalCount, pool.idleCount, pool.waitingCount);
 const { rows } = await Effect.runPromise(pool.query("select now() as at"));

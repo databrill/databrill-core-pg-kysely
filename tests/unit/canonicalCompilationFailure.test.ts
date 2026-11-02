@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStrictEquals } from "jsr:@std/assert@1.0.19";
-import { Either } from "effect";
+import { Result } from "effect";
 import { compileAmazonCountryQuery } from "../../src/canonical/AmazonCountry/load.ts";
 import { compileAmazonMarketplaceQuery } from "../../src/canonical/AmazonMarketplace/load.ts";
 import { createCanonicalQueryBuilder } from "../../src/canonical/execute.ts";
@@ -19,9 +19,9 @@ Deno.test("canonical public compilers synchronously capture Kysely plugin except
 	});
 	const results = [compileAmazonCountryQuery(db), compileAmazonMarketplaceQuery(db)];
 	for (const result of results) {
-		assert(Either.isLeft(result));
-		assertStrictEquals(result.left, failure);
-		assertStrictEquals(result.left.cause, originalCause);
+		assert(Result.isFailure(result));
+		assertStrictEquals(result.failure, failure);
+		assertStrictEquals(result.failure.cause, originalCause);
 	}
 	assertEquals(compilations, 2);
 });

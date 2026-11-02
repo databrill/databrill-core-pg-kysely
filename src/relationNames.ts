@@ -52,6 +52,7 @@ export const TABLE_NAMES = [
 	"amzadapi_reports_v1__search_asin_placement__byDay",
 	"amzagg_profit__adSkuDay",
 	"amzagg_profit__ledgerDay",
+	"amzagg_profit__ledgerFeeTaxDay",
 	"amzagg_profit__ledgerProductDay",
 	"amzagg_profit__openOrderLine",
 	"amzagg_profit__orderItemContextSku",

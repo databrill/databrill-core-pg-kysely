@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import { tryOrOperationError } from "../../tryOrOperationError.ts";
 import { type CompiledQuery, type Kysely } from "kysely";
 import type { DB } from "../../types.ts";
@@ -48,7 +48,9 @@ export function loadAmazonMarketplaces(
 				}],
 			};
 		}
-		const rows = Array.from(yield* executeCompiled(runner, yield* compileAmazonMarketplaceQuery(db, request)));
+		const rows = Array.from(
+			yield* executeCompiled(runner, yield* Effect.fromResult(compileAmazonMarketplaceQuery(db, request))),
+		);
 		return { declaration: AMAZON_MARKETPLACE.name, unavailable: [], rows };
 	});
 }
@@ -57,7 +59,7 @@ export function loadAmazonMarketplaces(
 export function compileAmazonMarketplaceQuery(
 	db: Kysely<DB>,
 	request: AmazonMarketplaceRequest = {},
-): Either.Either<CompiledQuery<AmazonMarketplaceRow>, Error> {
+): Result.Result<CompiledQuery<AmazonMarketplaceRow>, Error> {
 	return tryOrOperationError(() => {
 		return db
 			.selectFrom("amazon_marketplace")

@@ -756,6 +756,10 @@ export interface DbTable_amzadapi_billing_v3__invoice {
 	 */
 	currencyCode: string;
 	/**
+	 * Why doc does not decode as the invoice schema the code reads, one 'path message' per issue, joined by '; ', or the 4xx a later fetch of the invoice answered ('GET /invoices/<id> answered <status>'); null when it decodes. A row with a decodeError is fetched again on every sync, and its marketplace's invoice entries in the accrual ledger are not rewritten until it decodes
+	 */
+	decodeError: string | null;
+	/**
 	 * The full invoice as Amazon returned it from GET /invoices/{invoiceId}: the response's payload, unchanged
 	 */
 	doc: Json;
@@ -1366,7 +1370,7 @@ export interface DbTable_amzagg_profit__adSkuDay {
  */
 export interface DbTable_amzagg_profit__ledgerDay {
 	/**
-	 * The line's money, signed as it contributes to profit: minus the sum of the mapped postings, plus the open order lines' own amounts; 0 on the orders line
+	 * The line's money, minus the sum of the mapped postings, plus the open order lines' own amounts: signed as the line contributes to profit, and on taxPaidRecoverable and taxCollectedPaidOut, which are outside profit, as they move the seller's Amazon balance, negative for tax Amazon deducted and positive for tax it paid out; 0 on the orders line
 	 */
 	amount: number;
 	/**
@@ -1382,7 +1386,7 @@ export interface DbTable_amzagg_profit__ledgerDay {
 	 */
 	flag: string;
 	/**
-	 * The dashboard line (revenue, promoItem, promoShipping, amazonFees, amazonFeesEstimated, refunds, inbound, storage, taxNotRecovered, cogs, cogsReplacements, cogsReturnLoss, cogsWarehouseLoss, returnCogsCredit, adCost, accountExpenses, reimbursements, reimbursementCogsCredit, unclassified, orders), followed by a colon and the child for amazonFees (the fee's name), accountExpenses and unclassified (the account below its root or below Unclassified)
+	 * The dashboard line (revenue, promoItem, promoShipping, amazonFees, amazonFeesEstimated, refunds, inbound, storage, taxNotRecoveredFees, cogs, cogsReplacements, cogsReturnLoss, cogsReturnLossReversal, cogsWarehouseLoss, cogsWarehouseLossReversal, returnCogsCredit, reimbursementCogsCredit, replacementCogsCredit, adCost, taxNotRecoveredAdvertising, accountExpenses, reimbursements, unclassified, taxPaidNotConfigured, taxPaidJurisdictionUnknown, taxPaidRecoverable, taxCollectedPaidOut, feeVatNotEstimated, orders), followed by a colon and the child for the lines that have one: revenue (the transaction's kind, such as sale or titleTransfer, or openOrderLine for an open order line; the sale lines' units carry none), cogs (openOrderLine for an open order line's estimated cost of goods; the booked cost carries none), amazonFees (the fee's name and the transaction's kind), refunds (the transaction's kind and the account below its root), inbound and storage (the Finances `description`), adCost (the account below Advertising), accountExpenses (the account below its root), reimbursements (the account below Reimbursements, ending in the Finances `description`), unclassified (the account below Unclassified, or the account without its scope when no rule places it), taxNotRecoveredAdvertising, taxPaidNotConfigured, taxPaidJurisdictionUnknown and taxPaidRecoverable (where the tax was paid from: advertisingInvoice for an advertising invoice's tax and VAT credit, advertising for an advertising payment's tax taken from the Amazon balance, fees for every other; taxPaidRecoverable has only advertising and fees), and taxCollectedPaidOut (the account below Tax:Collected: the ship-to country and VAT rate, such as DE:VAT-19 or DE:VAT-Unknown, the country alone, such as US, or ShipCountryUnknown). A restock, a unit put back into stock, is on a line by the account it credits: returnCogsCredit for a sellable customer return and reimbursementCogsCredit for an in-kind reimbursement unit, both crediting cost of goods, and replacementCogsCredit for a replacement unit; the three make the statement's Returned to stock, inside gross profit. cogsReturnLossReversal and cogsWarehouseLossReversal hold a unit that reverses a return loss or a warehouse loss, each shown under its loss line, so cogsReplacements, cogsReturnLoss and cogsWarehouseLoss hold no restock. taxNotRecoveredFees and taxNotRecoveredAdvertising hold the tax Amazon charged on fees and on advertising that the seller's tax entity does not recover; taxPaidNotConfigured holds the tax Amazon charged a merchant in no tax entity, taxPaidJurisdictionUnknown the tax of a merchant in a tax entity whose country the ledger could not establish; neither counts in profit. taxPaidRecoverable, labelled 'Tax paid, recoverable', holds the tax Amazon deducted from the seller's balance that the seller's tax entity recovers; the recoverable tax of an advertising invoice, paid by card or bank transfer, is on no line. taxCollectedPaidOut, labelled 'Tax collected, paid out', holds the tax collected on sales that Amazon paid out to the seller to remit: the net of each Finances document's collected tax, so 0 where Amazon withholds the tax as deemed supplier or marketplace facilitator. Both are outside profit: each is money that moves the seller's Amazon balance without being income or cost. The VAT a seller self-assesses under the reverse charge is on no line. An open order line's estimated VAT on its estimated fee is on taxNotRecoveredFees, taxPaidRecoverable (child fees) or taxPaidNotConfigured (child fees) as its tax entity would place the booked tax, with source openOrderLine, which tells the estimate apart from the booked tax; feeVatNotEstimated carries only units: those of open order lines whose fee VAT is not estimated in full
 	 */
 	line: string;
 	/**
@@ -1402,9 +1406,52 @@ export interface DbTable_amzagg_profit__ledgerDay {
 	 */
 	source: string;
 	/**
-	 * Units: on revenue the sale lines' and open order lines' units; on cogs, cogsReturnLoss and returnCogsCredit the units the unit-cost postings cost; on orders the orders counted, each once on the earliest day of its sale lines and open order lines; 0 elsewhere
+	 * Units: on revenue the sale lines' and open order lines' units; on cogs, cogsReturnLoss and returnCogsCredit the units the unit-cost postings cost, and on cogs also the units of open order lines with an estimated cost of goods; on feeVatNotEstimated the units of open order lines whose fee VAT is not estimated in full; on orders the orders counted, each once on the earliest day of its sale lines and open order lines; 0 elsewhere
 	 */
 	units: number;
+}
+
+/**
+ * Per merchant, marketplace, booked Amazon fee type and booked day: the VAT
+ * Amazon booked on that fee of the merchant's sales, the fee's booked amount
+ * net of its discount, and the postings summed. The open order lines' estimate
+ * of the VAT on their estimated fee takes its rate from these rows.
+ *
+ * Read-only: it is not in `WritableDB`.
+ */
+export interface DbTable_amzagg_profit__ledgerFeeTaxDay {
+	/**
+	 * Currency of the sale transactions summed
+	 */
+	currency: string;
+	/**
+	 * The day the sales booked, YYYY-MM-DD, as amzfact_ledger_transaction.dateBooked
+	 */
+	dateBooked: PlainDateColumn;
+	/**
+	 * Sum of the fee type's Base and Promo postings on the same sales, taxed or not: the fee net of its discount, signed as the postings are, a fee positive and a discount negative
+	 */
+	feeNet: number;
+	/**
+	 * Sum of the fee type's Tax postings (the segment after the fee type) on the merchant's sales booked that day, signed as the postings are: tax charged positive
+	 */
+	feeTax: number;
+	/**
+	 * The booked fee type, the breakdown path's second segment under AmazonFees: Commission or FBAPerUnitFulfillmentFee, the two fee types the open lines' fee VAT is rated by
+	 */
+	feeType: string;
+	/**
+	 * Marketplace of the sale transactions summed
+	 */
+	marketplaceId: string;
+	/**
+	 * Amazon Seller ID
+	 */
+	merchantId: string;
+	/**
+	 * The postings summed into the row; a row is deleted when it reaches 0
+	 */
+	rowCount: number;
 }
 
 /**
@@ -1415,7 +1462,7 @@ export interface DbTable_amzagg_profit__ledgerDay {
  */
 export interface DbTable_amzagg_profit__ledgerProductDay {
 	/**
-	 * The line's money, signed as it contributes to profit; 0 on the orders line
+	 * The line's money, signed as in amzagg_profit__ledgerDay; 0 on the orders line
 	 */
 	amount: number;
 	/**
@@ -1467,11 +1514,16 @@ export interface DbTable_amzagg_profit__ledgerProductDay {
 /**
  * Dashboard-only open order lines: each Amazon storefront ALL_ORDERS line not
  * cancelled whose units the accrual ledger has not booked yet, with ordered,
- * booked and open units and the open units' prorated money and fee estimate.
+ * booked and open units and the open units' prorated money, net of VAT, fee
+ * estimate, estimated cost of goods and estimated VAT on the fee.
  *
  * Read-only: it is not in `WritableDB`.
  */
 export interface DbTable_amzagg_profit__openOrderLine {
+	/**
+	 * Estimated cost of goods of the open units (negative): the SKU's configured unit cost in the marketplace's country on the order day, in the marketplace's currency, times units; null when no unit cost is configured
+	 */
+	cogsEstimated: number | null;
 	/**
 	 * The ALL_ORDERS currency of the line; null when the report states none
 	 */
@@ -1484,6 +1536,22 @@ export interface DbTable_amzagg_profit__openOrderLine {
 	 * Fee estimate from the fee preview and the surcharge rate (negative), for the dashboard only, prorated to the open units
 	 */
 	feesEstimated: number;
+	/**
+	 * full (every part of the fee estimate has a rate), part (a part has none, and the three feeVat columns cover the rest) or none (no part has a rate, or there is no fee estimate; the three are null). A part's rate is the VAT Amazon booked on its fee type over that fee type's booked amount, on the merchant's sales booked in the marketplace in the 30 days before the order day
+	 */
+	feeVatCoverage: string;
+	/**
+	 * Estimated VAT on feesEstimated (negative) of a merchant in no tax entity, on the line taxPaidNotConfigured; null when feeVatCoverage is none, else 0 where nothing goes on that line
+	 */
+	feeVatNotConfigured: number | null;
+	/**
+	 * Estimated VAT on feesEstimated (negative) that the merchant's tax entity does not recover on the order day, on the line taxNotRecoveredFees; null when feeVatCoverage is none, else 0 where nothing goes on that line
+	 */
+	feeVatNotRecovered: number | null;
+	/**
+	 * Estimated VAT on feesEstimated (negative) that the merchant's tax entity recovers on the order day, on the line taxPaidRecoverable; null when feeVatCoverage is none, else 0 where nothing goes on that line
+	 */
+	feeVatRecoverable: number | null;
 	/**
 	 * ALL_ORDERS item_status of the line; never Cancelled
 	 */
@@ -1505,27 +1573,23 @@ export interface DbTable_amzagg_profit__openOrderLine {
 	 */
 	orderStatus: string | null;
 	/**
-	 * Negated item_promotion_discount (negative), prorated to the open units
+	 * Negated item_promotion_discount (negative), net of VAT at vatRate, prorated to the open units
 	 */
 	promo: number;
 	/**
-	 * item_price, prorated to the open units
+	 * item_price net of VAT at vatRate, prorated to the open units
 	 */
 	sales: number;
 	/**
-	 * item_price plus shipping_price plus gift_wrap_price when vat_exclusive_item_price is absent, else 0; prorated to the open units
-	 */
-	salesMissingVatExclusive: number;
-	/**
-	 * ALL_ORDERS ship_country of the line, the input that chooses the VAT rate
+	 * ALL_ORDERS ship_country of the line; upper-cased, or the marketplace's country when empty, it chooses the VAT rate
 	 */
 	shipCountry: string | null;
 	/**
-	 * shipping_price plus gift_wrap_price, gross of the shipping promotion, prorated to the open units
+	 * shipping_price plus gift_wrap_price, gross of the shipping promotion, net of VAT at vatRate, prorated to the open units
 	 */
 	shipping: number;
 	/**
-	 * Negated ship_promotion_discount (negative), prorated to the open units
+	 * Negated ship_promotion_discount (negative), net of VAT at vatRate, prorated to the open units
 	 */
 	shipPromo: number;
 	/**
@@ -1545,9 +1609,17 @@ export interface DbTable_amzagg_profit__openOrderLine {
 	 */
 	unitsOrdered: number;
 	/**
-	 * vat_exclusive_item_price minus item_price when vat_exclusive_item_price is present, else 0; prorated to the open units
+	 * The VAT taken out of sales, shipping, promo and shipPromo, signed as they are: each column plus its VAT is the report's amount prorated to the open units; 0 when vatRateSource is none
 	 */
-	vatReported: number;
+	vat: number;
+	/**
+	 * The VAT rate taken out, a fraction such as 0.2; null when vatRateSource is none
+	 */
+	vatRate: number | null;
+	/**
+	 * configured (the SKU's VAT_RATE attribute for the ship-to country on the order day, by the attribute scope order), statutory (that country's standard rate on the order day), or none (no rate known; nothing taken out)
+	 */
+	vatRateSource: string;
 }
 
 /**
@@ -2086,7 +2158,7 @@ export interface DbTable_amzfact_ledger_posting {
 	 */
 	ordinal: number;
 	/**
-	 * Breakdown path from level 1 to the deepest node, as a JSONB array, followed by the item's description when the item names no SKU (never a product title); on an advertising invoice's promotion or adjustment, promotions or adjustments followed by its description, raw; empty on postings that transcribe no breakdown node, the postings of COGS, replacement cost, COGS credit and return loss transactions included
+	 * Breakdown path from level 1 to the deepest node, as a JSONB array, followed by the item's description when the item names no SKU (never a product title); on an advertising invoice's promotion or adjustment, promotions or adjustments followed by its description, raw; on an advertising invoice's lines booked to Unclassified, their program name, price type and cost event, raw; on a summary fee booked to Unclassified, fees followed by its fee type; empty on postings that transcribe no breakdown node, the postings of COGS, replacement cost, COGS credit and return loss transactions included
 	 */
 	path: Json;
 	/**
@@ -7221,6 +7293,7 @@ export interface DB {
 	amzadapi_reports_v1__search_asin_placement__byDay: DbTable_amzadapi_reports_v1__search_asin_placement__byDay;
 	amzagg_profit__adSkuDay: DbTable_amzagg_profit__adSkuDay;
 	amzagg_profit__ledgerDay: DbTable_amzagg_profit__ledgerDay;
+	amzagg_profit__ledgerFeeTaxDay: DbTable_amzagg_profit__ledgerFeeTaxDay;
 	amzagg_profit__ledgerProductDay: DbTable_amzagg_profit__ledgerProductDay;
 	amzagg_profit__openOrderLine: DbTable_amzagg_profit__openOrderLine;
 	amzagg_profit__orderItemContextSku: DbTable_amzagg_profit__orderItemContextSku;

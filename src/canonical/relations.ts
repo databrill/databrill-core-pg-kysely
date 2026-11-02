@@ -33,7 +33,7 @@ export function probeRelations(
 		`;
 		const rows = yield* executeCompiled(
 			runner,
-			yield* tryOrOperationError(() => query.compile(db)),
+			yield* Effect.fromResult(tryOrOperationError(() => query.compile(db))),
 		);
 		return new Set(rows.filter((row) => row.present).map((row) => row.relation));
 	});

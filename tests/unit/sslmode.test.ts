@@ -1,5 +1,5 @@
 import { assertEitherFailure } from "./assertEitherFailure.ts";
-import { Either } from "effect";
+import { Result } from "effect";
 /**
  * Unit tests for `sslmode` handling: the mode → `ssl` mapping and the
  * connection-string rewrite that makes it stick.
@@ -33,12 +33,12 @@ Deno.test("tlsConfigForSslMode - each mode carries libpq's meaning, not pg's", (
 		["disable", false],
 	];
 	for (const [mode, expected] of table) {
-		assertEquals(Either.getOrThrow(tlsConfigForSslMode(mode, undefined)), expected, `sslmode=${mode}`);
+		assertEquals(Result.getOrThrow(tlsConfigForSslMode(mode, undefined)), expected, `sslmode=${mode}`);
 	}
 });
 
 Deno.test("tlsConfigForSslMode - verify-ca with a CA verifies the chain and skips the hostname", () => {
-	const config = Either.getOrThrow(tlsConfigForSslMode("verify-ca", "PEM"));
+	const config = Result.getOrThrow(tlsConfigForSslMode("verify-ca", "PEM"));
 	// Narrowing off `boolean`, not decoration: the return type is
 	// `boolean | ResolvedTlsConfig` and this package permits exactly one type
 	// assertion, in `createDb.ts`, which is not this one.
@@ -96,7 +96,7 @@ Deno.test("resolveSslMode - a mode is mapped and sslmode is removed from the str
 	// whenever the string mentions TLS at all — so leaving `sslmode=` in place
 	// makes the whole feature a no-op.
 	assertEquals(
-		Either.getOrThrow(resolveSslMode("postgres://u:p@h:6543/db?pgbouncer=true&sslmode=require", undefined)),
+		Result.getOrThrow(resolveSslMode("postgres://u:p@h:6543/db?pgbouncer=true&sslmode=require", undefined)),
 		{
 			connectionString: "postgres://u:p@h:6543/db?pgbouncer=true",
 			ssl: { rejectUnauthorized: false },
@@ -104,14 +104,14 @@ Deno.test("resolveSslMode - a mode is mapped and sslmode is removed from the str
 	);
 	// Both schemes `parseConnectionUri` accepts are covered: `postgres://` above,
 	// `postgresql://` here.
-	assertEquals(Either.getOrThrow(resolveSslMode("postgresql://h/db?sslmode=verify-full", undefined)), {
+	assertEquals(Result.getOrThrow(resolveSslMode("postgresql://h/db?sslmode=verify-full", undefined)), {
 		connectionString: "postgresql://h/db",
 		ssl: { rejectUnauthorized: true },
 	});
 });
 
 Deno.test("resolveSslMode - a query that held nothing but sslmode leaves no trailing ?", () => {
-	assertEquals(Either.getOrThrow(resolveSslMode("postgres://h/db?sslmode=disable", undefined)), {
+	assertEquals(Result.getOrThrow(resolveSslMode("postgres://h/db?sslmode=disable", undefined)), {
 		connectionString: "postgres://h/db",
 		ssl: false,
 	});
@@ -123,7 +123,7 @@ Deno.test("resolveSslMode - an explicit ssl wins over the string and comes back 
 	// silently discarded. That is the unfixed bug this change fixes, so both halves
 	// are asserted — the caller's object AND the stripped string.
 	const callerSsl = { ca: "PEM" };
-	const resolved = Either.getOrThrow(resolveSslMode("postgres://h/db?sslmode=verify-full", callerSsl));
+	const resolved = Result.getOrThrow(resolveSslMode("postgres://h/db?sslmode=verify-full", callerSsl));
 	assertEquals(resolved.connectionString, "postgres://h/db");
 	// The contract is "handed back", not "reconstructed".
 	assertStrictEquals(resolved.ssl, callerSsl);
@@ -133,11 +133,11 @@ Deno.test("resolveSslMode - an explicit ssl of false or true also wins over the 
 	// `false` is the value a truthiness check would mishandle, and the code tests
 	// `callerSsl !== undefined` precisely so that "no TLS, I mean it" survives a
 	// `sslmode=require` left in a copied connection string.
-	assertEquals(Either.getOrThrow(resolveSslMode("postgres://h/db?sslmode=require", false)), {
+	assertEquals(Result.getOrThrow(resolveSslMode("postgres://h/db?sslmode=require", false)), {
 		connectionString: "postgres://h/db",
 		ssl: false,
 	});
-	assertEquals(Either.getOrThrow(resolveSslMode("postgres://h/db?sslmode=require", true)), {
+	assertEquals(Result.getOrThrow(resolveSslMode("postgres://h/db?sslmode=require", true)), {
 		connectionString: "postgres://h/db",
 		ssl: true,
 	});
@@ -146,7 +146,7 @@ Deno.test("resolveSslMode - an explicit ssl of false or true also wins over the 
 Deno.test("resolveSslMode - with an explicit ssl an unrecognised mode does not throw", () => {
 	// Deliberate, and the counterpart to the throw above: when the caller has
 	// decided, the mode is never consulted, so it is never validated either.
-	assertEquals(Either.getOrThrow(resolveSslMode("postgres://h/db?sslmode=nonsense", { ca: "PEM" })), {
+	assertEquals(Result.getOrThrow(resolveSslMode("postgres://h/db?sslmode=nonsense", { ca: "PEM" })), {
 		connectionString: "postgres://h/db",
 		ssl: { ca: "PEM" },
 	});
@@ -154,7 +154,7 @@ Deno.test("resolveSslMode - with an explicit ssl an unrecognised mode does not t
 
 Deno.test("resolveSslMode - no sslmode leaves the string byte-identical and sets no ssl", () => {
 	const input = "postgres://h/db?application_name=x";
-	const resolved = Either.getOrThrow(resolveSslMode(input, undefined));
+	const resolved = Result.getOrThrow(resolveSslMode(input, undefined));
 	// Byte-identity, not merely equality: a re-serialised string would satisfy a
 	// looser check while breaking the textual preservation this module promises.
 	assertStrictEquals(resolved.connectionString, input);
@@ -167,7 +167,7 @@ Deno.test("resolveSslMode - a libpq key/value DSN is left entirely alone", () =>
 	// Its `sslmode=` is deliberately not consumed: a key/value string does not
 	// parse as a `URL`, and `pg` handles that form itself.
 	const input = "host=h port=5432 sslmode=require user=u";
-	const resolved = Either.getOrThrow(resolveSslMode(input, undefined));
+	const resolved = Result.getOrThrow(resolveSslMode(input, undefined));
 	assertStrictEquals(resolved.connectionString, input);
 	assertEquals(resolved.ssl, undefined);
 });
@@ -175,14 +175,14 @@ Deno.test("resolveSslMode - a libpq key/value DSN is left entirely alone", () =>
 Deno.test("resolveSslMode - a unix-socket path is left entirely alone", () => {
 	// The leading-`/` early return exists for this form.
 	const input = "/var/run/postgresql";
-	const resolved = Either.getOrThrow(resolveSslMode(input, undefined));
+	const resolved = Result.getOrThrow(resolveSslMode(input, undefined));
 	assertStrictEquals(resolved.connectionString, input);
 	assertEquals(resolved.ssl, undefined);
 });
 
 Deno.test("resolveSslMode - a non-postgres scheme is left alone", () => {
 	const input = "mysql://h/db?sslmode=require";
-	const resolved = Either.getOrThrow(resolveSslMode(input, undefined));
+	const resolved = Result.getOrThrow(resolveSslMode(input, undefined));
 	assertStrictEquals(resolved.connectionString, input);
 	assertEquals(resolved.ssl, undefined);
 });
@@ -194,7 +194,7 @@ Deno.test("resolveSslMode - the host-less URI form is handled and the dummy host
 	// form reads as "not a URL", keeps its `sslmode`, and gets `pg`'s meanings —
 	// the one thing this module exists to stop. That the dummy host stays out of
 	// the returned string is the other half of this test.
-	assertEquals(Either.getOrThrow(resolveSslMode("postgres://user:pass@/db?sslmode=require", undefined)), {
+	assertEquals(Result.getOrThrow(resolveSslMode("postgres://user:pass@/db?sslmode=require", undefined)), {
 		connectionString: "postgres://user:pass@/db",
 		ssl: { rejectUnauthorized: false },
 	});
@@ -206,7 +206,7 @@ Deno.test("resolveSslMode - a repeated sslmode takes the last, as pg would", () 
 	// `disable`. This is the test that catches a refactor to `.get()`. Both
 	// occurrences are stripped.
 	assertEquals(
-		Either.getOrThrow(resolveSslMode("postgres://h/db?sslmode=verify-full&sslmode=disable&a=1", undefined)),
+		Result.getOrThrow(resolveSslMode("postgres://h/db?sslmode=verify-full&sslmode=disable&a=1", undefined)),
 		{
 			connectionString: "postgres://h/db?a=1",
 			ssl: false,
@@ -218,7 +218,7 @@ Deno.test("resolveSslMode - uselibpqcompat is stripped alongside sslmode", () =>
 	// Leaving it in would ask `pg-connection-string` to apply its own libpq
 	// mapping on top of the one this module just applied.
 	assertEquals(
-		Either.getOrThrow(resolveSslMode("postgres://h/db?uselibpqcompat=true&sslmode=require&a=1", undefined)),
+		Result.getOrThrow(resolveSslMode("postgres://h/db?uselibpqcompat=true&sslmode=require&a=1", undefined)),
 		{
 			connectionString: "postgres://h/db?a=1",
 			ssl: { rejectUnauthorized: false },
@@ -230,7 +230,7 @@ Deno.test("resolveSslMode - uselibpqcompat alone is not stripped", () => {
 	// The pair with the test above is the statement: the function short-circuits
 	// when there is no `sslmode`, so it removes nothing it did not act on.
 	const input = "postgres://h/db?uselibpqcompat=true";
-	const resolved = Either.getOrThrow(resolveSslMode(input, undefined));
+	const resolved = Result.getOrThrow(resolveSslMode(input, undefined));
 	assertStrictEquals(resolved.connectionString, input);
 	assertEquals(resolved.ssl, undefined);
 });
@@ -241,7 +241,7 @@ Deno.test("resolveSslMode - sslcert, sslkey and sslrootcert are left for pg to r
 	// percent-encoding survives untouched, which is the point of the textual
 	// rewrite (see the round-trip test below).
 	assertEquals(
-		Either.getOrThrow(
+		Result.getOrThrow(
 			resolveSslMode("postgres://h/db?sslrootcert=%2Fx&sslcert=%2Fc&sslkey=%2Fk&sslmode=prefer", undefined),
 		),
 		{
@@ -256,13 +256,13 @@ Deno.test("resolveSslMode - the sslmode key is case-sensitive too", () => {
 	// no mapping, no strip, no throw. `pg` would not see it either, so this is
 	// consistent rather than merely convenient.
 	const input = "postgres://h/db?SSLMODE=require";
-	const resolved = Either.getOrThrow(resolveSslMode(input, undefined));
+	const resolved = Result.getOrThrow(resolveSslMode(input, undefined));
 	assertStrictEquals(resolved.connectionString, input);
 	assertEquals(resolved.ssl, undefined);
 });
 
 Deno.test("resolveSslMode - a fragment survives the rewrite", () => {
-	assertEquals(Either.getOrThrow(resolveSslMode("postgres://h/db?sslmode=require#frag", undefined)), {
+	assertEquals(Result.getOrThrow(resolveSslMode("postgres://h/db?sslmode=require#frag", undefined)), {
 		connectionString: "postgres://h/db#frag",
 		ssl: { rejectUnauthorized: false },
 	});
@@ -272,13 +272,13 @@ Deno.test("resolveSslMode - the surviving query is preserved textually, not re-e
 	// `new URL("postgres://h/db?options=-c geqo=off").toString()` yields
 	// `?options=-c%20geqo=off`, so this test fails the moment anyone "simplifies"
 	// the rewrite into a `URL` round trip. That is exactly why it is here.
-	assertEquals(Either.getOrThrow(resolveSslMode("postgres://h/db?options=-c geqo=off&sslmode=require", undefined)), {
+	assertEquals(Result.getOrThrow(resolveSslMode("postgres://h/db?options=-c geqo=off&sslmode=require", undefined)), {
 		connectionString: "postgres://h/db?options=-c geqo=off",
 		ssl: { rejectUnauthorized: false },
 	});
 	// A valueless pair has no `=` to split on and must survive as written.
 	assertEquals(
-		Either.getOrThrow(resolveSslMode("postgres://h/db?flag&sslmode=require", undefined)).connectionString,
+		Result.getOrThrow(resolveSslMode("postgres://h/db?flag&sslmode=require", undefined)).connectionString,
 		"postgres://h/db?flag",
 	);
 });
@@ -287,13 +287,13 @@ Deno.test("resolveSslMode - a query key decodes the way URLSearchParams decodes 
 	// `URLSearchParams` decodes `%73slmode` to `sslmode` and therefore FINDS the
 	// mode, so the strip has to find the same pair — otherwise a live `sslmode`
 	// stays in the string while this module claims to have consumed it.
-	assertEquals(Either.getOrThrow(resolveSslMode("postgres://h/db?%73slmode=require&a=1", undefined)), {
+	assertEquals(Result.getOrThrow(resolveSslMode("postgres://h/db?%73slmode=require&a=1", undefined)), {
 		connectionString: "postgres://h/db?a=1",
 		ssl: { rejectUnauthorized: false },
 	});
 	// `decodeURIComponent("%zz")` throws; a malformed escape must decode to itself
 	// instead, because a key this package does not recognise is one it leaves alone.
-	assertEquals(Either.getOrThrow(resolveSslMode("postgres://h/db?%zz=1&sslmode=require", undefined)), {
+	assertEquals(Result.getOrThrow(resolveSslMode("postgres://h/db?%zz=1&sslmode=require", undefined)), {
 		connectionString: "postgres://h/db?%zz=1",
 		ssl: { rejectUnauthorized: false },
 	});

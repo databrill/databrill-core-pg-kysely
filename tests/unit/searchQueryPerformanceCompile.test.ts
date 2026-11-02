@@ -1,5 +1,5 @@
 import { assertEitherFailure } from "./assertEitherFailure.ts";
-import { Either } from "effect";
+import { Result } from "effect";
 /** Compile-time checks for Search Query Performance's two-stage aggregation. */
 
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.19";
@@ -39,7 +39,7 @@ function paramsFor(
 }
 
 Deno.test("Search Query Performance compile - normalizes market counts before outer aggregation", () => {
-	const compiled = Either.getOrThrow(compileSearchQueryPerformanceQuery(db, paramsFor("SUM")));
+	const compiled = Result.getOrThrow(compileSearchQueryPerformanceQuery(db, paramsFor("SUM")));
 	assertStringIncludes(
 		compiled.sql,
 		`MAX(("impressionData"->>'totalQueryImpressionCount')::numeric) AS "totalQueryImpressionCount"`,
@@ -56,13 +56,13 @@ Deno.test("Search Query Performance compile - normalizes market counts before ou
 });
 
 Deno.test("Search Query Performance compile - merchant stays only when STORE is the output level", () => {
-	const sum = Either.getOrThrow(compileSearchQueryPerformanceQuery(db, paramsFor("SUM")));
+	const sum = Result.getOrThrow(compileSearchQueryPerformanceQuery(db, paramsFor("SUM")));
 	assertEquals(
 		sum.sql.includes(`GROUP BY "merchantId", "marketplaceId", "dateFirst", "dateLast", "searchQuery"`),
 		false,
 	);
 
-	const store = Either.getOrThrow(compileSearchQueryPerformanceQuery(db, paramsFor("STORE")));
+	const store = Result.getOrThrow(compileSearchQueryPerformanceQuery(db, paramsFor("STORE")));
 	assertStringIncludes(
 		store.sql,
 		`GROUP BY "merchantId", "marketplaceId", "dateFirst", "dateLast", "searchQuery"`,
@@ -80,7 +80,7 @@ Deno.test("Search Query Performance compile - WEEK and MONTH select source rows 
 			window: { kind: "explicit", ...WINDOW },
 		},
 	});
-	const month = Either.getOrThrow(compileSearchQueryPerformanceQuery(db, monthParams));
+	const month = Result.getOrThrow(compileSearchQueryPerformanceQuery(db, monthParams));
 	assertStringIncludes(month.sql, `WHERE "timeUnit" = `);
 	assert(month.parameters.includes("MONTH"));
 	assertEquals(month.sql.includes("date_trunc"), false);
@@ -97,7 +97,7 @@ Deno.test("Search Query Performance compile - WEEK and MONTH select source rows 
 });
 
 Deno.test("Search Query Performance compile - shares are recomputed and never read from report percentages", () => {
-	const compiled = Either.getOrThrow(compileSearchQueryPerformanceQuery(db, paramsFor("SEARCH_QUERY")));
+	const compiled = Result.getOrThrow(compileSearchQueryPerformanceQuery(db, paramsFor("SEARCH_QUERY")));
 	assertEquals(compiled.sql.includes(`->>'asinImpressionShare'`), false);
 	assertEquals(compiled.sql.includes(`->>'asinClickShare'`), false);
 	assertEquals(compiled.sql.includes(`->>'asinPurchaseShare'`), false);
@@ -110,7 +110,7 @@ Deno.test("Search Query Performance compile - returns only the selected count me
 	const selected = AMAZON_REPORT_SEARCH_QUERY_PERFORMANCE.measures.filter((measure) =>
 		measure.name === "asinImpressionCount"
 	);
-	const compiled = Either.getOrThrow(compileSearchQueryPerformanceQuery(db, { ...base, measures: selected }));
+	const compiled = Result.getOrThrow(compileSearchQueryPerformanceQuery(db, { ...base, measures: selected }));
 	const outerSelect = compiled.sql.slice(compiled.sql.lastIndexOf("SELECT"));
 	assertStringIncludes(outerSelect, `AS "asinImpressionCount"`);
 	assertEquals(outerSelect.includes(`AS "totalQueryImpressionCount"`), false);
@@ -119,7 +119,7 @@ Deno.test("Search Query Performance compile - returns only the selected count me
 
 Deno.test("Search Query Performance compile - corrected market impressions determine a limited keyword ranking", () => {
 	const base = paramsFor("SEARCH_QUERY");
-	const compiled = Either.getOrThrow(compileSearchQueryPerformanceQuery(db, {
+	const compiled = Result.getOrThrow(compileSearchQueryPerformanceQuery(db, {
 		...base,
 		request: { ...base.request, limit: 25 },
 	}));
@@ -151,7 +151,7 @@ Deno.test("Search Query Performance freshness - pins report time unit and exact 
 Deno.test("Search Query Performance compile - every caller filter remains a bind parameter", () => {
 	const base = paramsFor("SUM");
 	const injected = "B0BAD'; DROP TABLE x; --";
-	const compiled = Either.getOrThrow(compileSearchQueryPerformanceQuery(db, {
+	const compiled = Result.getOrThrow(compileSearchQueryPerformanceQuery(db, {
 		...base,
 		stores: [{ merchantId: "M-1", marketplaceId: "MP-1" }],
 		request: {

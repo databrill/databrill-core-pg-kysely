@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import {
 	type CompiledQuery,
 	DummyDriver,
@@ -146,7 +146,7 @@ function handlerFor(oid: number, parse: TemporalOidParser): PostgresJsTypeHandle
 	return {
 		to: oid,
 		from: [oid],
-		serialize: (value) => Either.getOrThrowWith(temporalToPostgres(value), (error) => error),
+		serialize: (value) => Result.getOrThrowWith(temporalToPostgres(value), (error) => error),
 		parse,
 	};
 }

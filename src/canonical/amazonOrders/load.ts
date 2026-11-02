@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import {
 	type AliasedRawBuilder,
 	type CompiledQuery,
@@ -146,8 +146,8 @@ export function loadAmazonOrders(
 			};
 		}
 
-		const window = yield* resolveCanonicalWindow(request.window, freshness.anchorDate);
-		const measures = yield* selectMeasures(request);
+		const window = yield* Effect.fromResult(resolveCanonicalWindow(request.window, freshness.anchorDate));
+		const measures = yield* Effect.fromResult(selectMeasures(request));
 		const rows = yield* runLevelQuery(db, runner, {
 			request,
 			keyColumns: keyColumnsForMeasures(spec, measures),
@@ -159,15 +159,15 @@ export function loadAmazonOrders(
 	});
 }
 
-function selectMeasures(request: AmazonOrdersRequest): Either.Either<readonly CanonicalMeasure[], Error> {
-	return Either.gen(function* () {
+function selectMeasures(request: AmazonOrdersRequest): Result.Result<readonly CanonicalMeasure[], Error> {
+	return Result.gen(function* () {
 		const offered = measuresForLevel(AMAZON_ORDERS, request.level);
 		if (request.measures === undefined) {
 			return offered;
 		}
 		const unknown = request.measures.filter((name) => !offered.some((measure) => measure.name === name));
 		if (unknown.length > 0) {
-			return yield* Either.left(
+			return yield* Result.fail(
 				new Error(
 					`AmazonOrders does not offer ${unknown.join(", ")} at level ${request.level}. Offered: ${
 						offered.map((measure) => measure.name).join(", ")
@@ -196,7 +196,7 @@ function runLevelQuery(
 	params: OrdersLevelQueryParams,
 ): Effect.Effect<readonly AmazonOrdersRow[], Error> {
 	return Effect.gen(function* () {
-		const rows = yield* executeCompiled(runner, yield* compileOrdersLevelQuery(db, params));
+		const rows = yield* executeCompiled(runner, yield* Effect.fromResult(compileOrdersLevelQuery(db, params)));
 		return Array.from(rows, (row) => buildRow(row, params.keyColumns, params.measures));
 	});
 }
@@ -205,11 +205,11 @@ function runLevelQuery(
 export function compileOrdersLevelQuery(
 	db: Kysely<DB>,
 	params: OrdersLevelQueryParams,
-): Either.Either<CompiledQuery<Record<string, OrderCellValue>>, Error> {
-	return Either.gen(function* () {
+): Result.Result<CompiledQuery<Record<string, OrderCellValue>>, Error> {
+	return Result.gen(function* () {
 		const currency = actualCurrencyExpression(params.request.targetCurrency);
-		const keyExpressions = yield* Either.all(params.keyColumns.map((column) => keyExpression(column, currency)));
-		const aggregates = yield* Either.all(
+		const keyExpressions = yield* Result.all(params.keyColumns.map((column) => keyExpression(column, currency)));
+		const aggregates = yield* Result.all(
 			params.measures.map((measure) => aggregate(measure, params.request.targetCurrency)),
 		);
 		return yield* tryOrOperationError(() => {
@@ -375,8 +375,8 @@ function timeBucket(
 	}
 }
 
-function keyExpression(column: string, currency: RawBuilder<unknown>): Either.Either<RawBuilder<unknown>, Error> {
-	return Either.gen(function* () {
+function keyExpression(column: string, currency: RawBuilder<unknown>): Result.Result<RawBuilder<unknown>, Error> {
+	return Result.gen(function* () {
 		switch (column) {
 			case "merchantId":
 				return sql`${sql.ref("o.merchant_id")}`;
@@ -395,7 +395,7 @@ function keyExpression(column: string, currency: RawBuilder<unknown>): Either.Ei
 			case "currency":
 				return currency;
 		}
-		return yield* Either.left(new Error(`AmazonOrders does not know the key column ${column}`));
+		return yield* Result.fail(new Error(`AmazonOrders does not know the key column ${column}`));
 	});
 }
 
@@ -408,8 +408,8 @@ function familyExpression(): RawBuilder<unknown> {
 function aggregate(
 	measure: CanonicalMeasure,
 	requestedTarget: string | undefined,
-): Either.Either<RawBuilder<unknown>, Error> {
-	return Either.gen(function* () {
+): Result.Result<RawBuilder<unknown>, Error> {
+	return Result.gen(function* () {
 		switch (measure.name) {
 			case "units":
 				return sql`COALESCE(SUM(${sql.ref("o.quantity")}), 0)::float8`;
@@ -439,7 +439,7 @@ function aggregate(
 					)
 				})`;
 		}
-		return yield* Either.left(new Error(`AmazonOrders does not know the measure ${measure.name}`));
+		return yield* Result.fail(new Error(`AmazonOrders does not know the measure ${measure.name}`));
 	});
 }
 

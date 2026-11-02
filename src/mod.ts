@@ -3,10 +3,10 @@
  * database.
  *
  * ```ts
- * import { Effect, Either } from "effect";
+ * import { Effect, Result } from "effect";
  * import { checkSchemaCompatibility, createDb } from "@databrill/core-pg-kysely";
  *
- * const { db, write, destroy } = Either.getOrThrowWith(
+ * const { db, write, destroy } = Result.getOrThrowWith(
  * 	createDb({
  * 		connectionString: Deno.env.get("DATABRILL_DATABASE_URL"),
  * 		schema: "w123456789",

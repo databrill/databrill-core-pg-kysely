@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import { type CompiledQuery, type Kysely } from "kysely";
 import { tryOrOperationError } from "../../tryOrOperationError.ts";
 import type { DB } from "../../types.ts";
@@ -40,7 +40,9 @@ export function loadAmazonCountries(
 				unavailable: [{ relation: AMAZON_COUNTRY.source.relation, reason: AMAZON_COUNTRY.source.whenAbsent }],
 			};
 		}
-		const rows = Array.from(yield* executeCompiled(runner, yield* compileAmazonCountryQuery(db, request)));
+		const rows = Array.from(
+			yield* executeCompiled(runner, yield* Effect.fromResult(compileAmazonCountryQuery(db, request))),
+		);
 		return { declaration: AMAZON_COUNTRY.name, unavailable: [], rows };
 	});
 }
@@ -49,7 +51,7 @@ export function loadAmazonCountries(
 export function compileAmazonCountryQuery(
 	db: Kysely<DB>,
 	request: AmazonCountryRequest = {},
-): Either.Either<CompiledQuery<AmazonCountryRow>, Error> {
+): Result.Result<CompiledQuery<AmazonCountryRow>, Error> {
 	return tryOrOperationError(() => {
 		return db
 			.selectFrom("amazon_country")

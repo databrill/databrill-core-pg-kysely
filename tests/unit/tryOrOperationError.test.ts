@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStrictEquals } from "jsr:@std/assert@1.0.19";
-import { Either } from "effect";
+import { Result } from "effect";
 import { tryOrOperationError } from "../../src/tryOrOperationError.ts";
 
 Deno.test("tryOrOperationError runs immediately once and preserves the result", () => {
@@ -10,8 +10,8 @@ Deno.test("tryOrOperationError runs immediately once and preserves the result", 
 		return value;
 	});
 	assertEquals(calls, 1);
-	assert(Either.isRight(result));
-	assertStrictEquals(result.right, value);
+	assert(Result.isSuccess(result));
+	assertStrictEquals(result.success, value);
 });
 
 Deno.test("tryOrOperationError preserves the original Error and its cause", () => {
@@ -20,9 +20,9 @@ Deno.test("tryOrOperationError preserves the original Error and its cause", () =
 	const result = tryOrOperationError(() => {
 		throw failure;
 	});
-	assert(Either.isLeft(result));
-	assertStrictEquals(result.left, failure);
-	assertStrictEquals(result.left.cause, cause);
+	assert(Result.isFailure(result));
+	assertStrictEquals(result.failure, failure);
+	assertStrictEquals(result.failure.cause, cause);
 });
 
 Deno.test("tryOrOperationError retains a non-Error failure as the cause", () => {
@@ -30,8 +30,8 @@ Deno.test("tryOrOperationError retains a non-Error failure as the cause", () => 
 	const result = tryOrOperationError(() => {
 		throw cause;
 	});
-	assert(Either.isLeft(result));
-	assert(result.left instanceof Error);
-	assertStrictEquals(result.left.cause, cause);
-	assertEquals(result.left.message, "Database operation failed");
+	assert(Result.isFailure(result));
+	assert(result.failure instanceof Error);
+	assertStrictEquals(result.failure.cause, cause);
+	assertEquals(result.failure.message, "Database operation failed");
 });

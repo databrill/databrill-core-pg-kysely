@@ -1,4 +1,4 @@
-import { Either } from "effect";
+import { Result } from "effect";
 /**
  * The canonical layer as a COMPILER: what SQL comes out, and whether the row
  * types the caller gets are the ones the generated schema promises.
@@ -65,11 +65,11 @@ Deno.test("canonical - postgres.js and pg are configured from the same OID table
 });
 
 Deno.test("canonical - PARENT_ASIN carries the marketplace, ASIN does not", () => {
-	const parent = Either.getOrThrow(compileLevelQuery(db, paramsFor("PARENT_ASIN")));
+	const parent = Result.getOrThrow(compileLevelQuery(db, paramsFor("PARENT_ASIN")));
 	assertStringIncludes(parent.sql, `"marketplaceId"`);
 	assertStringIncludes(parent.sql, `"parentAsin"`);
 
-	const asin = Either.getOrThrow(compileLevelQuery(db, paramsFor("ASIN")));
+	const asin = Result.getOrThrow(compileLevelQuery(db, paramsFor("ASIN")));
 	assertStringIncludes(asin.sql, `"childAsin"`);
 	// Amazon assigns a different parent per marketplace, so a parent ASIN without
 	// its marketplace is not an identifier — while the same ASIN IS the same
@@ -84,7 +84,7 @@ Deno.test("canonical - PARENT_ASIN carries the marketplace, ASIN does not", () =
 
 Deno.test("canonical - the store relation is never read without its dateGranularity filter", () => {
 	for (const level of ["SUM", "MERCHANT", "COUNTRY", "STORE"] as const) {
-		const compiled = Either.getOrThrow(compileLevelQuery(db, paramsFor(level)));
+		const compiled = Result.getOrThrow(compileLevelQuery(db, paramsFor(level)));
 		assertStringIncludes(compiled.sql, `from "amzreport_SALES_AND_TRAFFIC__store"`);
 		assertStringIncludes(compiled.sql, `"dateGranularity" = `);
 		assert(
@@ -95,7 +95,7 @@ Deno.test("canonical - the store relation is never read without its dateGranular
 });
 
 Deno.test("canonical - the family is resolved per country before grouping", () => {
-	const compiled = Either.getOrThrow(compileLevelQuery(db, paramsFor("FAMILY")));
+	const compiled = Result.getOrThrow(compileLevelQuery(db, paramsFor("FAMILY")));
 	// `countryToFamily` is a per-country override map, so reading the flat
 	// `family` column alone reports the wrong family wherever an override exists.
 	assertStringIncludes(compiled.sql, `"countryToFamily"->>"s"."countryCode"`);
@@ -106,10 +106,10 @@ Deno.test("canonical - the family is resolved per country before grouping", () =
 });
 
 Deno.test("canonical - the family relation is joined only when the request uses it", () => {
-	const asin = Either.getOrThrow(compileLevelQuery(db, paramsFor("ASIN")));
+	const asin = Result.getOrThrow(compileLevelQuery(db, paramsFor("ASIN")));
 	assertEquals(asin.sql.includes(`brand_config_amazon_asin`), false);
 
-	const filtered = Either.getOrThrow(compileLevelQuery(
+	const filtered = Result.getOrThrow(compileLevelQuery(
 		db,
 		paramsFor("ASIN", {
 			request: {
@@ -134,12 +134,12 @@ Deno.test("canonical - a non-additive measure appears only at the source grain",
 	}
 
 	// And the compiled SQL agrees: nothing selects it above SKU.
-	const asin = Either.getOrThrow(compileLevelQuery(db, paramsFor("ASIN")));
+	const asin = Result.getOrThrow(compileLevelQuery(db, paramsFor("ASIN")));
 	assertEquals(asin.sql.includes(`buy_box_percentage`), false);
 });
 
 Deno.test("canonical - a ratio is recomputed, never selected", () => {
-	const compiled = Either.getOrThrow(compileLevelQuery(db, paramsFor("ASIN")));
+	const compiled = Result.getOrThrow(compileLevelQuery(db, paramsFor("ASIN")));
 	// The declaration offers unitSessionPercentage at every level, but the query
 	// selects only its numerator and denominator: averaging the source rows'
 	// percentages would weight a SKU with three sessions like one with three
@@ -159,7 +159,7 @@ Deno.test("canonical - currency is a key only when ordered-product sales is sele
 	const sessions = offered.filter((measure) => measure.name === "sessions");
 	const sales = offered.filter((measure) => measure.name === "orderedProductSales");
 
-	const numberOnly = Either.getOrThrow(compileLevelQuery(
+	const numberOnly = Result.getOrThrow(compileLevelQuery(
 		db,
 		paramsFor("ASIN", {
 			keyColumns: keyColumnsForMeasures(spec, sessions),
@@ -168,7 +168,7 @@ Deno.test("canonical - currency is a key only when ordered-product sales is sele
 	));
 	assertEquals(numberOnly.sql.includes(`as "currency"`), false);
 
-	const money = Either.getOrThrow(compileLevelQuery(
+	const money = Result.getOrThrow(compileLevelQuery(
 		db,
 		paramsFor("ASIN", {
 			keyColumns: keyColumnsForMeasures(spec, sales),
@@ -181,7 +181,7 @@ Deno.test("canonical - currency is a key only when ordered-product sales is sele
 
 Deno.test("canonical - every level's key columns reach the compiled SQL", () => {
 	for (const spec of AMAZON_REPORT_SALES_AND_TRAFFIC.levels) {
-		const compiled = Either.getOrThrow(compileLevelQuery(db, paramsFor(spec.level)));
+		const compiled = Result.getOrThrow(compileLevelQuery(db, paramsFor(spec.level)));
 		for (const column of spec.keyColumns) {
 			assertStringIncludes(compiled.sql, `as "${column}"`);
 		}
@@ -204,7 +204,7 @@ Deno.test("canonical - freshness measures row count on one source and the metric
 });
 
 Deno.test("canonical - every store pair and filter value is a bind parameter", () => {
-	const compiled = Either.getOrThrow(compileLevelQuery(
+	const compiled = Result.getOrThrow(compileLevelQuery(
 		db,
 		paramsFor("ASIN", {
 			stores: [{ merchantId: "M-1", marketplaceId: "MP-1" }],

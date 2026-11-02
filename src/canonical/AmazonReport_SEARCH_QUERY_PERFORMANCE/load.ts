@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import { type CompiledQuery, type Kysely, type RawBuilder, sql } from "kysely";
 import { tryOrOperationError } from "../../tryOrOperationError.ts";
 import type { DB } from "../../types.ts";
@@ -97,7 +97,7 @@ export function loadAmazonReportSearchQueryPerformance(
 	request: AmazonReportSearchQueryPerformanceRequest,
 ): Effect.Effect<AmazonReportSearchQueryPerformanceResult, Error> {
 	return Effect.gen(function* () {
-		yield* validateRequest(request);
+		yield* Effect.fromResult(validateRequest(request));
 		const spec = levelSpec(AMAZON_REPORT_SEARCH_QUERY_PERFORMANCE, request.level);
 		if (spec === undefined) {
 			return yield* Effect.fail(
@@ -168,17 +168,17 @@ export function loadAmazonReportSearchQueryPerformance(
 			};
 		}
 
-		const window = yield* resolveCanonicalWindow(request.window, freshness.anchorDate);
-		const measures = yield* selectMeasures(request);
+		const window = yield* Effect.fromResult(resolveCanonicalWindow(request.window, freshness.anchorDate));
+		const measures = yield* Effect.fromResult(selectMeasures(request));
 		const rows = yield* executeCompiled(
 			runner,
-			yield* compileSearchQueryPerformanceQuery(db, {
+			yield* Effect.fromResult(compileSearchQueryPerformanceQuery(db, {
 				request,
 				keyColumns: keyColumnsForMeasures(spec, measures),
 				stores,
 				window,
 				measures,
-			}),
+			})),
 		);
 
 		return {
@@ -192,10 +192,10 @@ export function loadAmazonReportSearchQueryPerformance(
 	});
 }
 
-function validateRequest(request: AmazonReportSearchQueryPerformanceRequest): Either.Either<void, Error> {
-	return Either.gen(function* () {
+function validateRequest(request: AmazonReportSearchQueryPerformanceRequest): Result.Result<void, Error> {
+	return Result.gen(function* () {
 		if (request.timeGranularity !== "TOTAL" && request.timeGranularity !== request.reportTimeUnit) {
-			return yield* Either.left(
+			return yield* Result.fail(
 				new Error(
 					`AmazonReport_SEARCH_QUERY_PERFORMANCE cannot rebucket ${request.reportTimeUnit} rows as ` +
 						`${request.timeGranularity}. Use ${request.reportTimeUnit} or TOTAL.`,
@@ -204,12 +204,12 @@ function validateRequest(request: AmazonReportSearchQueryPerformanceRequest): Ei
 		}
 		if (request.limit !== undefined) {
 			if (!Number.isInteger(request.limit) || request.limit <= 0) {
-				return yield* Either.left(
+				return yield* Result.fail(
 					new Error("AmazonReport_SEARCH_QUERY_PERFORMANCE limit must be a positive integer."),
 				);
 			}
 			if (request.level !== "SEARCH_QUERY" || request.timeGranularity !== "TOTAL") {
-				return yield* Either.left(
+				return yield* Result.fail(
 					new Error("AmazonReport_SEARCH_QUERY_PERFORMANCE limit is valid only for SEARCH_QUERY/TOTAL."),
 				);
 			}
@@ -219,8 +219,8 @@ function validateRequest(request: AmazonReportSearchQueryPerformanceRequest): Ei
 
 function selectMeasures(
 	request: AmazonReportSearchQueryPerformanceRequest,
-): Either.Either<readonly CanonicalMeasure[], Error> {
-	return Either.gen(function* () {
+): Result.Result<readonly CanonicalMeasure[], Error> {
+	return Result.gen(function* () {
 		const offered = measuresForLevel(AMAZON_REPORT_SEARCH_QUERY_PERFORMANCE, request.level);
 		const asked = request.measures;
 		if (asked === undefined) {
@@ -228,7 +228,7 @@ function selectMeasures(
 		}
 		const unknown = asked.filter((name) => !offered.some((measure) => measure.name === name));
 		if (unknown.length > 0) {
-			return yield* Either.left(
+			return yield* Result.fail(
 				new Error(
 					`AmazonReport_SEARCH_QUERY_PERFORMANCE does not offer ${
 						unknown.join(", ")
@@ -257,8 +257,8 @@ interface NamedExpression {
 export function compileSearchQueryPerformanceQuery(
 	db: Kysely<DB>,
 	params: SearchQueryPerformanceQueryParams,
-): Either.Either<CompiledQuery<Record<string, SearchQueryPerformanceCellValue>>, Error> {
-	return Either.gen(function* () {
+): Result.Result<CompiledQuery<Record<string, SearchQueryPerformanceCellValue>>, Error> {
+	return Result.gen(function* () {
 		yield* validateRequest(params.request);
 		return yield* tryOrOperationError(() => {
 			const merchantId = col("amzreport_SEARCH_QUERY_PERFORMANCE", "merchantId");

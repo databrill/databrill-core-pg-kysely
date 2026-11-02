@@ -1,4 +1,4 @@
-import { Either } from "effect";
+import { Result } from "effect";
 import { tryOrOperationError } from "../tryOrOperationError.ts";
 
 /** An explicit inclusive date range, or a trailing number of inclusive days. */
@@ -22,7 +22,7 @@ export interface CanonicalResolvedWindow {
 export function resolveCanonicalWindow(
 	requested: CanonicalWindow,
 	anchorDate: string,
-): Either.Either<CanonicalResolvedWindow, Error> {
+): Result.Result<CanonicalResolvedWindow, Error> {
 	return tryOrOperationError(() => {
 		if (requested.kind === "explicit") {
 			return { dateFirst: requested.dateFirst, dateLast: requested.dateLast, anchoredOn: "explicit" };
